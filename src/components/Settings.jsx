@@ -49,10 +49,12 @@ export default function Settings() {
   const updateSettings = useTaskStore(s => s.updateSettings)
   const resetTodayProgress = useTaskStore(s => s.resetTodayProgress)
   const resetProgression = useTaskStore(s => s.resetProgression)
+  const hardReset = useTaskStore(s => s.hardReset)
   const closeSettings = useTaskStore(s => s.closeSettings)
   const isDark = settings.theme === 'dark'
 
   const [confirmReset, setConfirmReset] = useState(false)
+  const [confirmHardReset, setConfirmHardReset] = useState(false)
 
   const rank = getRankById(progression.currentRankId)
   const tierColor = RANK_COLORS[rank.tier]?.primary || '#888'
@@ -73,6 +75,16 @@ export default function Settings() {
     }
     resetProgression()
     setConfirmReset(false)
+  }
+
+  const handleHardReset = () => {
+    if (!confirmHardReset) {
+      setConfirmHardReset(true)
+      setTimeout(() => setConfirmHardReset(false), 3000)
+      return
+    }
+    hardReset()
+    setConfirmHardReset(false)
   }
 
   return (
@@ -149,14 +161,6 @@ export default function Settings() {
               >
                 Reset
               </button>
-            </SettingRow>
-
-            <SettingRow label="Daily reset" description="Move uncompleted tasks to Later at midnight" isDark={isDark}>
-              <Toggle
-                checked={settings.dailyResetEnabled}
-                onChange={(v) => updateSettings({ dailyResetEnabled: v })}
-                isDark={isDark}
-              />
             </SettingRow>
 
             <SettingRow label="Font size" isDark={isDark}>
@@ -247,6 +251,25 @@ export default function Settings() {
           <div className={`mt-6 pt-4 text-center border-t ${isDark ? 'border-border-dark' : 'border-border-light'}`}>
             <p className={`text-xs font-sans tracking-widest uppercase ${isDark ? 'text-muted-dark' : 'text-muted-light'} opacity-50`}>
               You've completed {settings.lifetimeCompleted} tasks
+            </p>
+          </div>
+
+          {/* Hard Reset */}
+          <div className={`mt-6 pt-4 border-t ${isDark ? 'border-border-dark' : 'border-border-light'}`}>
+            <button
+              onClick={handleHardReset}
+              className={`w-full py-2.5 rounded-lg text-xs font-sans font-medium transition-colors ${
+                confirmHardReset
+                  ? 'bg-red-500/15 text-red-400 border border-red-400/50'
+                  : isDark
+                    ? 'text-muted-dark hover:text-red-400 border border-border-dark hover:border-red-400/30'
+                    : 'text-muted-light hover:text-red-400 border border-border-light hover:border-red-400/30'
+              }`}
+            >
+              {confirmHardReset ? 'Confirm full reset? This cannot be undone.' : 'Full Reset'}
+            </button>
+            <p className={`text-center text-xs font-sans mt-2 ${isDark ? 'text-muted-dark' : 'text-muted-light'} opacity-40`}>
+              Removes all tasks, progress, and resets everything
             </p>
           </div>
         </div>

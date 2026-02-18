@@ -454,3 +454,10 @@ ipcMain.handle('progression:clearDerank', () => {
   upsertSettings({ pendingDerank: null })
   return { success: true }
 })
+
+ipcMain.handle('hardReset', () => {
+  db.prepare('DELETE FROM tasks').run()
+  db.prepare('DELETE FROM settings').run()
+  initSettings()
+  return { success: true }
+})

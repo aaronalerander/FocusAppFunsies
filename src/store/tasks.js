@@ -527,6 +527,33 @@ const useTaskStore = create((set, get) => ({
     await window.focusAPI.settings.update(changes)
   },
 
+  hardReset: async () => {
+    await window.focusAPI.hardReset()
+    set({
+      tasks: [],
+      settings: {
+        theme: 'dark',
+        soundEnabled: true,
+        fontSize: 'medium',
+        dailyResetEnabled: false,
+        lifetimeCompleted: 0,
+        lastResetDate: null,
+        progressResetAt: null,
+      },
+      progression: {
+        currentXP: 0,
+        currentRankId: 'bronze_4',
+        streakCount: 0,
+        streakLastDate: null,
+        boardClearedToday: false,
+        tasksCompletedToday: 0,
+        freeXPTaskIds: [],
+        pendingDerank: null,
+      },
+      ui: { ...get().ui, isSettingsOpen: false },
+    })
+  },
+
   updateTaskTag: async (id, tag) => {
     const normalized = tag && tag.trim() ? tag.trim() : null
     set(state => ({

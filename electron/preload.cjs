@@ -34,5 +34,6 @@ contextBridge.exposeInMainWorld('focusAPI', {
     removeFreeXPTask: (taskId) => ipcRenderer.invoke('progression:removeFreeXPTask', taskId),
     reset: () => ipcRenderer.invoke('progression:reset'),
     clearDerank: () => ipcRenderer.invoke('progression:clearDerank'),
-  }
+  },
+  hardReset: () => ipcRenderer.invoke('hardReset'),
 })
