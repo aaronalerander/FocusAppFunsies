@@ -3,6 +3,7 @@ import { fileURLToPath } from 'url'
 import { join, dirname } from 'path'
 import { createRequire } from 'module'
 import { existsSync, readFileSync } from 'fs'
+import { getRankForXP, calculateDailyPenalty } from '../src/utils/progression.js'
 
 const require = createRequire(import.meta.url)
 const Database = require('better-sqlite3')
@@ -26,7 +27,8 @@ db.exec(`
     createdAt TEXT NOT NULL,
     completedAt TEXT,
     movedToLaterAt TEXT,
-    "order" INTEGER NOT NULL DEFAULT 0
+    "order" INTEGER NOT NULL DEFAULT 0,
+    tag TEXT
   );
 
   CREATE TABLE IF NOT EXISTS settings (
@@ -34,6 +36,13 @@ db.exec(`
     value TEXT NOT NULL
   );
 `)
+
+// Add tag column to existing databases that don't have it yet
+try {
+  db.exec('ALTER TABLE tasks ADD COLUMN tag TEXT')
+} catch (_) {
+  // Column already exists — safe to ignore
+}
 
 // ── Default settings ──────────────────────────────────────────
 
@@ -44,7 +53,17 @@ const SETTING_DEFAULTS = {
   dailyResetEnabled: false,
   lifetimeCompleted: 0,
   lastResetDate: null,
-  progressResetAt: null   // ISO timestamp — completed tasks before this are excluded from today's counter
+  progressResetAt: null,   // ISO timestamp — completed tasks before this are excluded from today's counter
+
+  // ── Progression / Gamification ───────────────────────────────
+  currentXP: 0,
+  currentRankId: 'bronze_4',
+  streakCount: 0,
+  streakLastDate: null,        // ISO date string (YYYY-MM-DD) of last board clear
+  boardClearedToday: false,
+  tasksCompletedToday: 0,
+  freeXPTaskIds: '[]',         // JSON array of task IDs in bonus round
+  pendingDerank: null           // { fromRankId, toRankId, xpLost } | null — shown on next launch
 }
 
 function initSettings() {
@@ -148,20 +167,78 @@ function createWindow() {
   })
 }
 
+function getYesterday(todayStr) {
+  const d = new Date(todayStr + 'T12:00:00')
+  d.setDate(d.getDate() - 1)
+  return d.toISOString().split('T')[0]
+}
+
 function checkDailyReset() {
   const settings = readSettings()
   const today = new Date().toISOString().split('T')[0]
 
   // ── Midnight progress reset (always) ──────────────────────────
-  // If progressResetAt is from a previous day, advance it to today's midnight
-  // so today's completed tasks start counting fresh.
   const resetAt = settings.progressResetAt
   const resetDay = resetAt ? resetAt.split('T')[0] : null
   if (resetDay !== today) {
-    // Midnight of today in local time, expressed as ISO string
     const midnight = new Date()
     midnight.setHours(0, 0, 0, 0)
-    upsertSettings({ progressResetAt: midnight.toISOString() })
+
+    // ── Progression: XP penalty & streak logic ────────────────────
+    const boardCleared = settings.boardClearedToday || false
+    const todayTaskCount = db.prepare("SELECT COUNT(*) as n FROM tasks WHERE status = 'today'").get().n
+    const currentXP = settings.currentXP || 0
+    const currentRankId = settings.currentRankId || 'bronze_4'
+    const streakCount = settings.streakCount || 0
+    const streakLastDate = settings.streakLastDate || null
+    const yesterday = getYesterday(today)
+
+    const progressionUpdates = {}
+
+    if (!boardCleared && todayTaskCount > 0) {
+      // Board was NOT cleared and there are uncompleted today-tasks → penalty
+      const penalty = calculateDailyPenalty(todayTaskCount, currentRankId)
+      const newXP = Math.max(0, currentXP - penalty)
+      const newRank = getRankForXP(newXP)
+
+      progressionUpdates.currentXP = newXP
+      progressionUpdates.currentRankId = newRank.id
+
+      if (newRank.id !== currentRankId) {
+        progressionUpdates.pendingDerank = { fromRankId: currentRankId, toRankId: newRank.id, xpLost: penalty }
+      }
+    }
+
+    // Streak: if board was cleared and streakLastDate was yesterday or today, streak holds.
+    // If board was NOT cleared on a day with tasks, break streak.
+    // Zero-task days are neutral — don't break streak.
+    if (!boardCleared && todayTaskCount > 0) {
+      progressionUpdates.streakCount = 0
+    }
+    // (If board was cleared, streak was already updated by progression:boardCleared handler)
+
+    // Free XP carry-over: tasks from bonus round that weren't completed
+    // Per PRD: they carry over as normal tasks tomorrow (completing earns XP, not completing incurs penalty)
+    // Reorder free XP tasks to top of Today
+    const freeXPTaskIds = JSON.parse(settings.freeXPTaskIds || '[]')
+    if (boardCleared && freeXPTaskIds.length > 0) {
+      const todayTasks = db.prepare("SELECT id FROM tasks WHERE status = 'today' ORDER BY \"order\" ASC").all()
+      const freeSet = new Set(freeXPTaskIds)
+      const freeTasks = todayTasks.filter(t => freeSet.has(t.id))
+      const otherTasks = todayTasks.filter(t => !freeSet.has(t.id))
+      const reordered = [...freeTasks, ...otherTasks]
+      const updateOrder = db.prepare('UPDATE tasks SET "order" = ? WHERE id = ?')
+      db.transaction(() => {
+        reordered.forEach((t, i) => updateOrder.run(i, t.id))
+      })()
+    }
+
+    // Reset daily counters
+    progressionUpdates.boardClearedToday = false
+    progressionUpdates.tasksCompletedToday = 0
+    progressionUpdates.freeXPTaskIds = '[]'
+
+    upsertSettings({ progressResetAt: midnight.toISOString(), ...progressionUpdates })
   }
 
   // ── Daily task reset (opt-in) ──────────────────────────────────
@@ -209,14 +286,14 @@ ipcMain.handle('tasks:write', (_e, tasks) => {
 
 ipcMain.handle('task:add', (_e, task) => {
   db.prepare(`
-    INSERT INTO tasks (id, text, status, createdAt, completedAt, movedToLaterAt, "order")
-    VALUES (@id, @text, @status, @createdAt, @completedAt, @movedToLaterAt, @order)
-  `).run(task)
+    INSERT INTO tasks (id, text, status, createdAt, completedAt, movedToLaterAt, "order", tag)
+    VALUES (@id, @text, @status, @createdAt, @completedAt, @movedToLaterAt, @order, @tag)
+  `).run({ tag: null, ...task })
   return { success: true }
 })
 
 ipcMain.handle('task:update', (_e, { id, changes }) => {
-  const allowed = ['text', 'status', 'completedAt', 'movedToLaterAt', 'order']
+  const allowed = ['text', 'status', 'completedAt', 'movedToLaterAt', 'order', 'tag']
   const cols = Object.keys(changes).filter(k => allowed.includes(k))
   if (cols.length === 0) return { success: true }
 
@@ -273,4 +350,107 @@ ipcMain.handle('progress:reset', () => {
 
 ipcMain.handle('system:theme', () => {
   return nativeTheme.shouldUseDarkColors ? 'dark' : 'light'
+})
+
+ipcMain.handle('tags:all', () => {
+  const rows = db.prepare("SELECT DISTINCT tag FROM tasks WHERE tag IS NOT NULL AND tag != '' ORDER BY tag ASC").all()
+  return rows.map(r => r.tag)
+})
+
+// ── Progression IPC Handlers ─────────────────────────────────
+
+ipcMain.handle('progression:read', () => {
+  const settings = readSettings()
+  return {
+    currentXP: settings.currentXP ?? 0,
+    currentRankId: settings.currentRankId ?? 'bronze_4',
+    streakCount: settings.streakCount ?? 0,
+    streakLastDate: settings.streakLastDate ?? null,
+    boardClearedToday: settings.boardClearedToday ?? false,
+    tasksCompletedToday: settings.tasksCompletedToday ?? 0,
+    freeXPTaskIds: JSON.parse(settings.freeXPTaskIds ?? '[]'),
+    pendingDerank: settings.pendingDerank ?? null,
+  }
+})
+
+ipcMain.handle('progression:awardXP', (_e, { xpAmount, tasksCompletedToday }) => {
+  const settings = readSettings()
+  const oldXP = settings.currentXP ?? 0
+  const oldRankId = settings.currentRankId ?? 'bronze_4'
+  const newXP = oldXP + xpAmount
+  const newRank = getRankForXP(newXP)
+  const rankedUp = newRank.id !== oldRankId
+
+  upsertSettings({
+    currentXP: newXP,
+    currentRankId: newRank.id,
+    tasksCompletedToday,
+  })
+
+  return { newXP, newRankId: newRank.id, rankedUp, previousRankId: oldRankId }
+})
+
+ipcMain.handle('progression:boardCleared', () => {
+  const settings = readSettings()
+  const today = new Date().toISOString().split('T')[0]
+  const streakLastDate = settings.streakLastDate ?? null
+  const oldStreak = settings.streakCount ?? 0
+  const yesterday = getYesterday(today)
+
+  // Increment streak if last clear was yesterday or today, otherwise start fresh at 1
+  let newStreak
+  if (streakLastDate === today) {
+    newStreak = oldStreak  // already cleared today, no double count
+  } else if (streakLastDate === yesterday) {
+    newStreak = oldStreak + 1
+  } else {
+    newStreak = 1
+  }
+
+  const updates = {
+    boardClearedToday: true,
+    streakCount: newStreak,
+    streakLastDate: today,
+  }
+  upsertSettings(updates)
+
+  return {
+    boardClearedToday: true,
+    streakCount: newStreak,
+    streakLastDate: today,
+  }
+})
+
+ipcMain.handle('progression:addFreeXPTask', (_e, taskId) => {
+  const settings = readSettings()
+  const ids = JSON.parse(settings.freeXPTaskIds ?? '[]')
+  if (!ids.includes(taskId)) ids.push(taskId)
+  upsertSettings({ freeXPTaskIds: JSON.stringify(ids) })
+  return ids
+})
+
+ipcMain.handle('progression:removeFreeXPTask', (_e, taskId) => {
+  const settings = readSettings()
+  const ids = JSON.parse(settings.freeXPTaskIds ?? '[]').filter(id => id !== taskId)
+  upsertSettings({ freeXPTaskIds: JSON.stringify(ids) })
+  return ids
+})
+
+ipcMain.handle('progression:reset', () => {
+  upsertSettings({
+    currentXP: 0,
+    currentRankId: 'bronze_4',
+    streakCount: 0,
+    streakLastDate: null,
+    boardClearedToday: false,
+    tasksCompletedToday: 0,
+    freeXPTaskIds: '[]',
+    pendingDerank: null,
+  })
+  return { success: true }
+})
+
+ipcMain.handle('progression:clearDerank', () => {
+  upsertSettings({ pendingDerank: null })
+  return { success: true }
 })

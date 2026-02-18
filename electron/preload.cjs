@@ -22,5 +22,17 @@ contextBridge.exposeInMainWorld('focusAPI', {
   },
   system: {
     getTheme: () => ipcRenderer.invoke('system:theme')
+  },
+  tags: {
+    getAll: () => ipcRenderer.invoke('tags:all')
+  },
+  progression: {
+    read: () => ipcRenderer.invoke('progression:read'),
+    awardXP: (data) => ipcRenderer.invoke('progression:awardXP', data),
+    boardCleared: () => ipcRenderer.invoke('progression:boardCleared'),
+    addFreeXPTask: (taskId) => ipcRenderer.invoke('progression:addFreeXPTask', taskId),
+    removeFreeXPTask: (taskId) => ipcRenderer.invoke('progression:removeFreeXPTask', taskId),
+    reset: () => ipcRenderer.invoke('progression:reset'),
+    clearDerank: () => ipcRenderer.invoke('progression:clearDerank'),
   }
 })

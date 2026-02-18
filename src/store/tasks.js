@@ -1,6 +1,14 @@
 import { create } from 'zustand'
 import { v4 as uuidv4 } from 'uuid'
 import { playCompletionSound } from '@/hooks/useSound'
+import {
+  calculateTaskXP,
+  getStreakMultiplier,
+  getRankForXP,
+  getRankById,
+  getNextRank,
+  calculateDayXP
+} from '@/utils/progression'
 
 const useTaskStore = create((set, get) => ({
   tasks: [],
@@ -13,6 +21,16 @@ const useTaskStore = create((set, get) => ({
     lastResetDate: null,
     progressResetAt: null
   },
+  progression: {
+    currentXP: 0,
+    currentRankId: 'bronze_4',
+    streakCount: 0,
+    streakLastDate: null,
+    boardClearedToday: false,
+    tasksCompletedToday: 0,
+    freeXPTaskIds: [],
+    pendingDerank: null,
+  },
   ui: {
     activeTab: 'today',
     isSettingsOpen: false,
@@ -20,7 +38,10 @@ const useTaskStore = create((set, get) => ({
     completingTaskId: null,
     confetti: null,  // null | { mode: 'normal'|'jackpot'|'allDone', id: number }
     streakMessage: null,
-    isLoaded: false
+    isLoaded: false,
+    toast: null,              // { message, type: 'info'|'warning'|'success', id }
+    xpSummary: null,          // XP summary overlay data
+    rankUpAnimation: null,    // { fromRankId, toRankId, newSlots }
   },
 
   // ── Selectors ──────────────────────────────────────────────────
@@ -42,12 +63,11 @@ const useTaskStore = create((set, get) => ({
 
   todayProgress: () => {
     const today = new Date().toISOString().split('T')[0]
-    const resetAt = get().settings.progressResetAt  // ISO timestamp | null
+    const resetAt = get().settings.progressResetAt
 
     const allTodayTasks = get().tasks.filter(t => {
       if (t.status === 'today') return true
       if (t.status === 'done' && t.completedAt && t.completedAt.startsWith(today)) {
-        // Exclude tasks completed before the last progress reset
         if (resetAt && t.completedAt <= resetAt) return false
         return true
       }
@@ -63,6 +83,13 @@ const useTaskStore = create((set, get) => ({
     }
   },
 
+  taskSlots: () => {
+    const rank = getRankById(get().progression.currentRankId)
+    return rank.taskSlots
+  },
+
+  currentRank: () => getRankById(get().progression.currentRankId),
+
   // ── Init ───────────────────────────────────────────────────────
 
   initialize: async () => {
@@ -72,15 +99,29 @@ const useTaskStore = create((set, get) => ({
         set(state => ({ ui: { ...state.ui, isLoaded: true } }))
         return
       }
-      const [tasks, settings] = await Promise.all([
+      const [tasks, settings, progression] = await Promise.all([
         window.focusAPI.tasks.readAll(),
-        window.focusAPI.settings.read()
+        window.focusAPI.settings.read(),
+        window.focusAPI.progression.read()
       ])
       set({
         tasks: tasks || [],
         settings: { ...get().settings, ...(settings || {}) },
+        progression: { ...get().progression, ...(progression || {}) },
         ui: { ...get().ui, isLoaded: true }
       })
+
+      // Check for pending derank notification from overnight penalty
+      if (progression?.pendingDerank) {
+        const derank = progression.pendingDerank
+        const fromRank = getRankById(derank.fromRankId)
+        const toRank = getRankById(derank.toRankId)
+        setTimeout(() => {
+          get().showToast(`Dropped to ${toRank.name} (-${derank.xpLost} XP)`, 'warning')
+        }, 1000)
+        await window.focusAPI.progression.clearDerank()
+        set(state => ({ progression: { ...state.progression, pendingDerank: null } }))
+      }
     } catch (err) {
       console.error('Failed to initialize Focus store:', err)
       set(state => ({ ui: { ...state.ui, isLoaded: true } }))
@@ -93,7 +134,18 @@ const useTaskStore = create((set, get) => ({
     if (!text.trim()) return
     const { activeTab } = get().ui
     const tasks = get().tasks
-    const targetStatus = activeTab === 'later' ? 'later' : 'today'
+    let targetStatus = activeTab === 'later' ? 'later' : 'today'
+
+    // Slot limit enforcement for Today
+    if (targetStatus === 'today') {
+      const todayCount = tasks.filter(t => t.status === 'today').length
+      const maxSlots = get().taskSlots()
+      if (todayCount >= maxSlots) {
+        targetStatus = 'later'
+        get().showToast('Max tasks for today — finish shit to unlock more slots', 'warning')
+      }
+    }
+
     const statusCount = tasks.filter(t => t.status === targetStatus).length
 
     const task = {
@@ -103,11 +155,23 @@ const useTaskStore = create((set, get) => ({
       createdAt: new Date().toISOString(),
       completedAt: null,
       movedToLaterAt: null,
-      order: statusCount
+      order: statusCount,
+      tag: null
     }
 
     set(state => ({ tasks: [...state.tasks, task] }))
     await window.focusAPI.tasks.add(task)
+
+    // After first board clear of the day, all new Today tasks are free XP
+    if (targetStatus === 'today' && get().progression.boardClearedToday) {
+      set(state => ({
+        progression: {
+          ...state.progression,
+          freeXPTaskIds: [...state.progression.freeXPTaskIds, task.id]
+        }
+      }))
+      await window.focusAPI.progression.addFreeXPTask(task.id)
+    }
   },
 
   completeTask: async (id) => {
@@ -149,6 +213,78 @@ const useTaskStore = create((set, get) => ({
       setTimeout(() => {
         set(state => ({ ui: { ...state.ui, confetti: { mode, id: Date.now() } } }))
       }, 600)
+
+      // ── XP Award ──────────────────────────────────────────────
+      const { tasksCompletedToday, streakCount, boardClearedToday } = get().progression
+      const streakMult = getStreakMultiplier(streakCount)
+      const xpAmount = calculateTaskXP(tasksCompletedToday, streakMult)
+      const newTasksCompleted = tasksCompletedToday + 1
+
+      const result = await window.focusAPI.progression.awardXP({
+        xpAmount,
+        tasksCompletedToday: newTasksCompleted
+      })
+
+      set(state => ({
+        progression: {
+          ...state.progression,
+          currentXP: result.newXP,
+          currentRankId: result.newRankId,
+          tasksCompletedToday: newTasksCompleted
+        }
+      }))
+
+      // Check for rank-up
+      if (result.rankedUp) {
+        const newRank = getRankById(result.newRankId)
+        const oldRank = getRankById(result.previousRankId)
+        const newSlots = newRank.taskSlots > oldRank.taskSlots ? newRank.taskSlots : null
+        setTimeout(() => {
+          set(state => ({
+            ui: { ...state.ui, rankUpAnimation: {
+              fromRankId: result.previousRankId,
+              toRankId: result.newRankId,
+              newSlots
+            }}
+          }))
+        }, isAllDone ? 2000 : 1200)  // Delay more if allDone to let confetti play
+      }
+
+      // Check for first board clear of the day
+      if (isAllDone && !boardClearedToday) {
+        const boardResult = await window.focusAPI.progression.boardCleared()
+        set(state => ({
+          progression: {
+            ...state.progression,
+            boardClearedToday: boardResult.boardClearedToday,
+            streakCount: boardResult.streakCount,
+            streakLastDate: boardResult.streakLastDate,
+          }
+        }))
+
+        // Build XP summary data
+        const dayXP = calculateDayXP(newTasksCompleted, streakMult)
+        setTimeout(() => {
+          set(state => ({
+            ui: { ...state.ui, xpSummary: {
+              tasksCompleted: newTasksCompleted,
+              breakdown: dayXP.breakdown,
+              totalXP: dayXP.totalXP,
+              streakDays: boardResult.streakCount,
+              streakMultiplier: streakMult,
+              currentXP: result.newXP,
+              currentRankId: result.newRankId,
+              rankedUp: result.rankedUp,
+              newRankId: result.rankedUp ? result.newRankId : null,
+            }}
+          }))
+        }, result.rankedUp ? 5000 : 2000)  // After rank-up animation if applicable
+
+        // Auto-pull tasks from Later to fill available slots (all as free XP)
+        setTimeout(() => {
+          get().autoPullFromLater()
+        }, result.rankedUp ? 5500 : 2500)
+      }
     } catch (err) {
       console.error('[completeTask] IPC error, firing confetti with fallback lifetime:', err)
 
@@ -191,6 +327,67 @@ const useTaskStore = create((set, get) => ({
   },
 
   moveTask: async (id, targetStatus) => {
+    const task = get().tasks.find(t => t.id === id)
+    if (!task) return
+
+    // Moving to Today: check slot limit
+    if (targetStatus === 'today') {
+      const todayCount = get().tasks.filter(t => t.status === 'today').length
+      const maxSlots = get().taskSlots()
+      if (todayCount >= maxSlots) {
+        get().showToast('Today is full. Complete a task first.', 'warning')
+        return
+      }
+    }
+
+    // Moving from Today to Later: swap with first Later task (if Later has tasks)
+    if (task.status === 'today' && targetStatus === 'later') {
+      const laterTasks = get().laterTasks()
+
+      if (laterTasks.length > 0) {
+        const swapTask = laterTasks[0]
+        const laterCount = laterTasks.length
+        const changes1 = { status: 'later', movedToLaterAt: new Date().toISOString(), order: laterCount }
+        const changes2 = { status: 'today', movedToLaterAt: null, order: task.order }
+
+        // Free XP propagation: if the outgoing task was free XP, the incoming task inherits it
+        const { freeXPTaskIds, boardClearedToday } = get().progression
+        const outgoingWasFree = freeXPTaskIds.includes(id)
+        // After board is cleared, incoming swap tasks are always free XP
+        const incomingShouldBeFree = outgoingWasFree || boardClearedToday
+
+        let newFreeIds = freeXPTaskIds.filter(fid => fid !== id)
+        if (incomingShouldBeFree && !newFreeIds.includes(swapTask.id)) {
+          newFreeIds = [...newFreeIds, swapTask.id]
+        }
+
+        set(state => ({
+          tasks: state.tasks.map(t => {
+            if (t.id === id) return { ...t, ...changes1 }
+            if (t.id === swapTask.id) return { ...t, ...changes2 }
+            return t
+          }),
+          progression: {
+            ...state.progression,
+            freeXPTaskIds: newFreeIds
+          }
+        }))
+
+        get().showToast(`Swapped to Later`, 'info')
+
+        // Persist free XP changes
+        if (outgoingWasFree) await window.focusAPI.progression.removeFreeXPTask(id)
+        if (incomingShouldBeFree) await window.focusAPI.progression.addFreeXPTask(swapTask.id)
+
+        await Promise.all([
+          window.focusAPI.tasks.update(id, changes1),
+          window.focusAPI.tasks.update(swapTask.id, changes2)
+        ])
+        return
+      }
+    }
+
+    // Default move (no swap)
     const changes = {
       status: targetStatus,
       movedToLaterAt: targetStatus === 'later' ? new Date().toISOString() : null
@@ -198,10 +395,37 @@ const useTaskStore = create((set, get) => ({
     set(state => ({
       tasks: state.tasks.map(t => t.id === id ? { ...t, ...changes } : t)
     }))
+
+    // Clean up freeXPTaskIds if moving a free XP task back to Later
+    if (targetStatus === 'later') {
+      const { freeXPTaskIds } = get().progression
+      if (freeXPTaskIds.includes(id)) {
+        set(state => ({
+          progression: {
+            ...state.progression,
+            freeXPTaskIds: state.progression.freeXPTaskIds.filter(fid => fid !== id)
+          }
+        }))
+        await window.focusAPI.progression.removeFreeXPTask(id)
+      }
+    }
+
     await window.focusAPI.tasks.update(id, changes)
   },
 
   deleteTask: async (id) => {
+    // Clean up freeXPTaskIds if deleting a free XP task
+    const { freeXPTaskIds } = get().progression
+    if (freeXPTaskIds.includes(id)) {
+      set(state => ({
+        progression: {
+          ...state.progression,
+          freeXPTaskIds: state.progression.freeXPTaskIds.filter(fid => fid !== id)
+        }
+      }))
+      window.focusAPI.progression.removeFreeXPTask(id)
+    }
+
     set(state => ({
       tasks: state.tasks.filter(t => t.id !== id),
       ui: { ...state.ui, confirmDeleteId: null }
@@ -227,14 +451,80 @@ const useTaskStore = create((set, get) => ({
   confirmDelete: (id) => set(state => ({ ui: { ...state.ui, confirmDeleteId: id } })),
   cancelDelete: () => set(state => ({ ui: { ...state.ui, confirmDeleteId: null } })),
 
+  showToast: (message, type = 'info') => {
+    const toastId = Date.now()
+    set(state => ({ ui: { ...state.ui, toast: { message, type, id: toastId } } }))
+    setTimeout(() => {
+      set(state => {
+        if (state.ui.toast?.id === toastId) {
+          return { ui: { ...state.ui, toast: null } }
+        }
+        return state
+      })
+    }, 3000)
+  },
+  dismissToast: () => set(state => ({ ui: { ...state.ui, toast: null } })),
+
+  dismissXPSummary: () => set(state => ({ ui: { ...state.ui, xpSummary: null } })),
+
+  dismissRankUpAnimation: () => set(state => ({ ui: { ...state.ui, rankUpAnimation: null } })),
+
+  autoPullFromLater: async () => {
+    const maxSlots = get().taskSlots()
+    const todayCount = get().tasks.filter(t => t.status === 'today').length
+    const available = maxSlots - todayCount
+    if (available <= 0) return
+
+    const laterTasks = get().laterTasks()
+    const toPull = laterTasks.slice(0, available)
+    if (toPull.length === 0) return
+
+    for (const task of toPull) {
+      const changes = { status: 'today', movedToLaterAt: null }
+      set(state => ({
+        tasks: state.tasks.map(t => t.id === task.id ? { ...t, ...changes } : t),
+        progression: {
+          ...state.progression,
+          freeXPTaskIds: [...state.progression.freeXPTaskIds, task.id]
+        }
+      }))
+      await window.focusAPI.tasks.update(task.id, changes)
+      await window.focusAPI.progression.addFreeXPTask(task.id)
+    }
+  },
+
   resetTodayProgress: async () => {
     const resetAt = await window.focusAPI.progress.reset()
     set(state => ({ settings: { ...state.settings, progressResetAt: resetAt } }))
   },
 
+  resetProgression: async () => {
+    await window.focusAPI.progression.reset()
+    set(state => ({
+      progression: {
+        currentXP: 0,
+        currentRankId: 'bronze_4',
+        streakCount: 0,
+        streakLastDate: null,
+        boardClearedToday: false,
+        tasksCompletedToday: 0,
+        freeXPTaskIds: [],
+        pendingDerank: null,
+      }
+    }))
+  },
+
   updateSettings: async (changes) => {
     set(state => ({ settings: { ...state.settings, ...changes } }))
     await window.focusAPI.settings.update(changes)
+  },
+
+  updateTaskTag: async (id, tag) => {
+    const normalized = tag && tag.trim() ? tag.trim() : null
+    set(state => ({
+      tasks: state.tasks.map(t => t.id === id ? { ...t, tag: normalized } : t)
+    }))
+    await window.focusAPI.tasks.update(id, { tag: normalized })
   }
 }))
 

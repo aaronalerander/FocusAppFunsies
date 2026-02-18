@@ -7,9 +7,14 @@ export default function TaskInput() {
   const addTask = useTaskStore(s => s.addTask)
   const theme = useTaskStore(s => s.settings.theme)
   const activeTab = useTaskStore(s => s.ui.activeTab)
+  const tasks = useTaskStore(s => s.tasks)
+  const taskSlots = useTaskStore(s => s.taskSlots())
   const inputRef = useRef(null)
 
   const isDark = theme === 'dark'
+  const isToday = activeTab !== 'later' && activeTab !== 'done'
+  const todayCount = isToday ? tasks.filter(t => t.status === 'today').length : 0
+  const isFull = isToday && todayCount >= taskSlots
   const placeholder = activeTab === 'later' ? 'Park this for later...' : 'What needs to happen today?'
 
   const handleKeyDown = (e) => {
@@ -64,6 +69,13 @@ export default function TaskInput() {
             : 'text-text-light placeholder:text-muted-light'
         }`}
       />
+      {isToday && (
+        <span className={`text-[10px] font-sans tabular-nums flex-shrink-0 ${
+          isFull ? 'text-amber-500' : isDark ? 'text-muted-dark opacity-50' : 'text-muted-light opacity-50'
+        }`}>
+          {todayCount}/{taskSlots}
+        </span>
+      )}
       {value && (
         <motion.span
           initial={{ opacity: 0 }}

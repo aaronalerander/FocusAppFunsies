@@ -1,7 +1,9 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import useTaskStore from '@/store/tasks'
 import { getBurstParticleProps } from '@/hooks/useAnimations'
+import { getTagColor } from '@/utils/tagColors'
+import TagInput from '@/components/TagInput'
 
 function CheckboxButton({ taskId, done, onComplete }) {
   const [isBursting, setIsBursting] = useState(false)
@@ -79,14 +81,27 @@ function StrikethroughLine({ active }) {
   )
 }
 
-export default function TaskItem({ task }) {
+export default function TaskItem({ task, dragHandleProps }) {
   const [isHovered, setIsHovered] = useState(false)
+  const [isTagEditing, setIsTagEditing] = useState(false)
   const completingTaskId = useTaskStore(s => s.ui.completingTaskId)
   const completeTask = useTaskStore(s => s.completeTask)
   const moveTask = useTaskStore(s => s.moveTask)
   const confirmDelete = useTaskStore(s => s.confirmDelete)
+  const updateTaskTag = useTaskStore(s => s.updateTaskTag)
+  const freeXPTaskIds = useTaskStore(s => s.progression.freeXPTaskIds)
   const theme = useTaskStore(s => s.settings.theme)
   const isDark = theme === 'dark'
+  const isFreeXP = task.status === 'today' && freeXPTaskIds.includes(task.id)
+
+  const handleTagCommit = useCallback((tag) => {
+    updateTaskTag(task.id, tag)
+    setIsTagEditing(false)
+  }, [task.id, updateTaskTag])
+
+  const handleTagClose = useCallback(() => {
+    setIsTagEditing(false)
+  }, [])
 
   const isCompleting = completingTaskId === task.id
   const isDone = task.status === 'done'
@@ -116,6 +131,25 @@ export default function TaskItem({ task }) {
         confirmDelete(task.id)
       }}
     >
+      {/* Drag handle */}
+      {dragHandleProps && (
+        <div
+          {...dragHandleProps}
+          className={`flex items-center justify-center flex-shrink-0 cursor-grab active:cursor-grabbing touch-none ${
+            isDark ? 'text-muted-dark' : 'text-muted-light'
+          } opacity-0 group-hover:opacity-40 hover:!opacity-70 transition-opacity`}
+        >
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+            <circle cx="4" cy="2.5" r="1.2"/>
+            <circle cx="8" cy="2.5" r="1.2"/>
+            <circle cx="4" cy="6" r="1.2"/>
+            <circle cx="8" cy="6" r="1.2"/>
+            <circle cx="4" cy="9.5" r="1.2"/>
+            <circle cx="8" cy="9.5" r="1.2"/>
+          </svg>
+        </div>
+      )}
+
       {/* Checkbox (only for today tasks) */}
       {task.status === 'today' && (
         <CheckboxButton
@@ -154,6 +188,13 @@ export default function TaskItem({ task }) {
           <StrikethroughLine active={isCompleting} />
         </div>
 
+        {/* Free XP indicator */}
+        {isFreeXP && (
+          <span className="text-[10px] font-sans font-medium text-accent/70 mt-0.5">
+            free XP
+          </span>
+        )}
+
         {/* Meta text */}
         {task.status === 'later' && task.createdAt && (
           <div className={`text-xs font-sans mt-0.5 ${isDark ? 'text-muted-dark' : 'text-muted-light'} opacity-60`}>
@@ -167,10 +208,60 @@ export default function TaskItem({ task }) {
         )}
       </div>
 
+      {/* Tag area — always visible for non-done tasks */}
+      {!isDone && (
+        <div className="flex items-center flex-shrink-0">
+          {isTagEditing ? (
+            <TagInput
+              currentTag={task.tag || null}
+              isDark={isDark}
+              onCommit={handleTagCommit}
+              onClose={handleTagClose}
+            />
+          ) : task.tag ? (
+            // Colored pill
+            <button
+              onClick={() => setIsTagEditing(true)}
+              title="Edit tag"
+              className={`rounded px-2 py-0.5 text-xs font-sans font-medium leading-none transition-opacity hover:opacity-80 ${isHovered ? 'opacity-100' : 'opacity-50'}`}
+              style={{
+                background: getTagColor(task.tag).bg,
+                color: getTagColor(task.tag).text,
+                height: 22,
+              }}
+            >
+              {task.tag}
+            </button>
+          ) : (
+            // Ghost "add tag" button — only on hover
+            <AnimatePresence>
+              {isHovered && (
+                <motion.button
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.1 }}
+                  onClick={() => setIsTagEditing(true)}
+                  title="Add tag"
+                  className={`rounded px-2 py-0.5 text-xs font-sans border border-dashed transition-colors ${
+                    isDark
+                      ? 'border-border-dark text-muted-dark hover:border-muted-dark hover:text-text-dark'
+                      : 'border-border-light text-muted-light hover:border-muted-light hover:text-text-light'
+                  }`}
+                  style={{ height: 22 }}
+                >
+                  + tag
+                </motion.button>
+              )}
+            </AnimatePresence>
+          )}
+        </div>
+      )}
+
       {/* Action buttons (hover only, not for done tasks) */}
       {!isDone && (
         <AnimatePresence>
-          {isHovered && (
+          {isHovered && !isTagEditing && (
             <motion.div
               initial={{ opacity: 0, x: 6 }}
               animate={{ opacity: 1, x: 0 }}
@@ -216,6 +307,22 @@ export default function TaskItem({ task }) {
             </motion.div>
           )}
         </AnimatePresence>
+      )}
+
+      {/* Tag pill for done tasks (read-only) */}
+      {isDone && task.tag && (
+        <span
+          className="rounded px-2 py-0.5 text-xs font-sans font-medium leading-none flex-shrink-0 opacity-60"
+          style={{
+            background: getTagColor(task.tag).bg,
+            color: getTagColor(task.tag).text,
+            height: 22,
+            display: 'flex',
+            alignItems: 'center',
+          }}
+        >
+          {task.tag}
+        </span>
       )}
     </div>
   )

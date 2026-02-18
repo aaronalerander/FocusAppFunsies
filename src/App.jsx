@@ -8,6 +8,9 @@ import DoneView from '@/views/DoneView'
 import Settings from '@/components/Settings'
 import DeleteModal from '@/components/DeleteModal'
 import Confetti from '@/components/Confetti'
+import Toast from '@/components/Toast'
+import XPSummary from '@/components/XPSummary'
+import RankUpAnimation from '@/components/RankUpAnimation'
 
 const tabOrder = ['today', 'later', 'done']
 
@@ -18,6 +21,8 @@ export default function App() {
   const isSettingsOpen = useTaskStore(s => s.ui.isSettingsOpen)
   const confirmDeleteId = useTaskStore(s => s.ui.confirmDeleteId)
   const confetti = useTaskStore(s => s.ui.confetti)
+  const xpSummary = useTaskStore(s => s.ui.xpSummary)
+  const rankUpAnimation = useTaskStore(s => s.ui.rankUpAnimation)
   const theme = useTaskStore(s => s.settings.theme)
   const openSettings = useTaskStore(s => s.openSettings)
 
@@ -109,6 +114,16 @@ export default function App() {
           )}
         </AnimatePresence>
       </div>
+
+      <Toast />
+
+      <AnimatePresence>
+        {xpSummary && <XPSummary key="xp-summary" />}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {rankUpAnimation && <RankUpAnimation key="rank-up" />}
+      </AnimatePresence>
 
       <AnimatePresence>
         {isSettingsOpen && <Settings />}

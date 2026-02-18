@@ -1,7 +1,8 @@
-import { useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import useTaskStore from '@/store/tasks'
 import { settingsVariants } from '@/hooks/useAnimations'
+import { getRankById, getXPProgress, getNextRank, RANK_COLORS } from '@/utils/progression'
 
 function Toggle({ checked, onChange, isDark }) {
   return (
@@ -44,10 +45,17 @@ function SettingRow({ label, description, children, isDark }) {
 
 export default function Settings() {
   const settings = useTaskStore(s => s.settings)
+  const progression = useTaskStore(s => s.progression)
   const updateSettings = useTaskStore(s => s.updateSettings)
   const resetTodayProgress = useTaskStore(s => s.resetTodayProgress)
+  const resetProgression = useTaskStore(s => s.resetProgression)
   const closeSettings = useTaskStore(s => s.closeSettings)
   const isDark = settings.theme === 'dark'
+
+  const [confirmReset, setConfirmReset] = useState(false)
+
+  const rank = getRankById(progression.currentRankId)
+  const tierColor = RANK_COLORS[rank.tier]?.primary || '#888'
 
   useEffect(() => {
     const handler = (e) => {
@@ -56,6 +64,16 @@ export default function Settings() {
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [closeSettings])
+
+  const handleResetProgression = () => {
+    if (!confirmReset) {
+      setConfirmReset(true)
+      setTimeout(() => setConfirmReset(false), 3000)
+      return
+    }
+    resetProgression()
+    setConfirmReset(false)
+  }
 
   return (
     <div className="absolute inset-0 z-40">
@@ -83,7 +101,7 @@ export default function Settings() {
           <div className={`w-8 h-1 rounded-full ${isDark ? 'bg-border-dark' : 'bg-border-light'}`} />
         </div>
 
-        <div className="px-6 pt-2 pb-8">
+        <div className="px-6 pt-2 pb-8 max-h-[80vh] overflow-y-auto">
           <div className="flex items-center justify-between mb-4">
             <h2 className={`text-base font-sans font-semibold ${isDark ? 'text-text-dark' : 'text-text-light'}`}>
               Settings
@@ -160,6 +178,69 @@ export default function Settings() {
                 ))}
               </div>
             </SettingRow>
+          </div>
+
+          {/* Progression stats */}
+          <div className={`mt-6 pt-4 border-t ${isDark ? 'border-border-dark' : 'border-border-light'}`}>
+            <h3 className={`text-xs font-sans font-semibold tracking-widest uppercase mb-3 ${isDark ? 'text-muted-dark' : 'text-muted-light'}`}>
+              Progression
+            </h3>
+
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <span className={`text-xs font-sans ${isDark ? 'text-muted-dark' : 'text-muted-light'}`}>
+                  Rank
+                </span>
+                <span className="text-xs font-sans font-semibold" style={{ color: tierColor }}>
+                  {rank.name}
+                </span>
+              </div>
+
+              <div className="flex justify-between items-center">
+                <span className={`text-xs font-sans ${isDark ? 'text-muted-dark' : 'text-muted-light'}`}>
+                  Total XP
+                </span>
+                <span className={`text-xs font-sans font-medium ${isDark ? 'text-text-dark' : 'text-text-light'}`}>
+                  {progression.currentXP.toLocaleString()}
+                </span>
+              </div>
+
+              <div className="flex justify-between items-center">
+                <span className={`text-xs font-sans ${isDark ? 'text-muted-dark' : 'text-muted-light'}`}>
+                  Streak
+                </span>
+                <span className={`text-xs font-sans font-medium ${isDark ? 'text-text-dark' : 'text-text-light'}`}>
+                  {progression.streakCount} day{progression.streakCount !== 1 ? 's' : ''}
+                </span>
+              </div>
+
+              <div className="flex justify-between items-center">
+                <span className={`text-xs font-sans ${isDark ? 'text-muted-dark' : 'text-muted-light'}`}>
+                  Task slots
+                </span>
+                <span className={`text-xs font-sans font-medium ${isDark ? 'text-text-dark' : 'text-text-light'}`}>
+                  {rank.taskSlots}
+                </span>
+              </div>
+
+              <div className="flex justify-between items-center pt-2">
+                <span className={`text-xs font-sans ${isDark ? 'text-muted-dark' : 'text-muted-light'}`}>
+                  Reset progression
+                </span>
+                <button
+                  onClick={handleResetProgression}
+                  className={`px-3 py-1 rounded-lg text-xs font-sans transition-colors ${
+                    confirmReset
+                      ? 'text-red-400 border border-red-400/50 hover:bg-red-400/10'
+                      : isDark
+                        ? 'text-muted-dark hover:text-text-dark border border-border-dark hover:border-muted-dark'
+                        : 'text-muted-light hover:text-text-light border border-border-light hover:border-muted-light'
+                  }`}
+                >
+                  {confirmReset ? 'Confirm?' : 'Reset'}
+                </button>
+              </div>
+            </div>
           </div>
 
           {/* Lifetime stat */}

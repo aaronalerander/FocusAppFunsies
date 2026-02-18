@@ -52,7 +52,7 @@ export default function Counter() {
   const { completed, total } = todayProgress
 
   return (
-    <div className="px-6 pt-4 pb-2">
+    <div>
       <div className="flex items-baseline gap-2">
         {/* Main slot-machine counter */}
         <AnimatedNumber value={completed} />

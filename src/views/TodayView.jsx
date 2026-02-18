@@ -1,10 +1,9 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import useTaskStore from '@/store/tasks'
 import Counter from '@/components/Counter'
-import ProgressBar from '@/components/ProgressBar'
+import RankDisplay from '@/components/RankDisplay'
 import TaskInput from '@/components/TaskInput'
-import TaskItem from '@/components/TaskItem'
-import { taskItemVariants } from '@/hooks/useAnimations'
+import SortableTaskList from '@/components/SortableTaskList'
 
 function StreakMessage() {
   const streakMessage = useTaskStore(s => s.ui.streakMessage)
@@ -62,27 +61,17 @@ export default function TodayView() {
 
   return (
     <div className="h-full flex flex-col">
-      <Counter />
-      <ProgressBar />
+      {/* Header row: Counter left, RankDisplay right */}
+      <div className="flex items-center justify-between px-6 pt-4 pb-2">
+        <Counter />
+        <RankDisplay />
+      </div>
+
       <StreakMessage />
       <TaskInput />
 
       <div className="flex-1 overflow-y-auto">
-        <AnimatePresence initial={false}>
-          {todayTasks.map(task => (
-            <motion.div
-              key={task.id}
-              layout
-              variants={taskItemVariants}
-              initial="hidden"
-              animate="visible"
-              exit="exit"
-            >
-              <TaskItem task={task} />
-            </motion.div>
-          ))}
-        </AnimatePresence>
-
+        <SortableTaskList tasks={todayTasks} />
         {todayTasks.length === 0 && <EmptyState isDark={isDark} />}
       </div>
     </div>

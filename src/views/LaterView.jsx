@@ -1,8 +1,7 @@
-import { AnimatePresence, motion } from 'framer-motion'
+import { motion } from 'framer-motion'
 import useTaskStore from '@/store/tasks'
 import TaskInput from '@/components/TaskInput'
-import TaskItem from '@/components/TaskItem'
-import { taskItemVariants } from '@/hooks/useAnimations'
+import SortableTaskList from '@/components/SortableTaskList'
 
 function EmptyState({ isDark }) {
   return (
@@ -31,21 +30,7 @@ export default function LaterView() {
       <TaskInput />
 
       <div className="flex-1 overflow-y-auto">
-        <AnimatePresence initial={false}>
-          {laterTasks.map(task => (
-            <motion.div
-              key={task.id}
-              layout
-              variants={taskItemVariants}
-              initial="hidden"
-              animate="visible"
-              exit="exit"
-            >
-              <TaskItem task={task} />
-            </motion.div>
-          ))}
-        </AnimatePresence>
-
+        <SortableTaskList tasks={laterTasks} />
         {laterTasks.length === 0 && <EmptyState isDark={isDark} />}
       </div>
     </div>
