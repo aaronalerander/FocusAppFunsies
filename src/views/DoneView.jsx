@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import useTaskStore from '@/store/tasks'
 import TaskItem from '@/components/TaskItem'
+import { getLogicalToday } from '@/utils/dateUtils'
 
 const PAGE_SIZE = 20
 
@@ -25,11 +26,13 @@ function EmptyState({ isDark }) {
 function formatDayHeader(dateStr) {
   const date = new Date(dateStr + 'T12:00:00')
   const today = new Date()
-  const yesterday = new Date()
-  yesterday.setDate(yesterday.getDate() - 1)
+  const logicalToday = getLogicalToday()
+  const logicalYesterday = new Date(logicalToday + 'T12:00:00')
+  logicalYesterday.setDate(logicalYesterday.getDate() - 1)
+  const logicalYesterdayStr = logicalYesterday.toISOString().split('T')[0]
 
-  if (dateStr === today.toISOString().split('T')[0]) return 'Today'
-  if (dateStr === yesterday.toISOString().split('T')[0]) return 'Yesterday'
+  if (dateStr === logicalToday) return 'Today'
+  if (dateStr === logicalYesterdayStr) return 'Yesterday'
 
   return date.toLocaleDateString(undefined, {
     weekday: 'long',

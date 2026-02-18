@@ -9,6 +9,7 @@ import {
   getNextRank,
   calculateDayXP
 } from '@/utils/progression'
+import { getLogicalToday } from '@/utils/dateUtils'
 
 const useTaskStore = create((set, get) => ({
   tasks: [],
@@ -62,7 +63,7 @@ const useTaskStore = create((set, get) => ({
       .sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt)),
 
   todayProgress: () => {
-    const today = new Date().toISOString().split('T')[0]
+    const today = getLogicalToday()
     const resetAt = get().settings.progressResetAt
 
     const allTodayTasks = get().tasks.filter(t => {

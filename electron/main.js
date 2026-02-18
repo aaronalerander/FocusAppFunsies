@@ -4,6 +4,7 @@ import { join, dirname } from 'path'
 import { createRequire } from 'module'
 import { existsSync, readFileSync } from 'fs'
 import { getRankForXP, calculateDailyPenalty } from '../src/utils/progression.js'
+import { getLogicalToday, getResetTimestamp } from '../src/utils/dateUtils.js'
 
 const require = createRequire(import.meta.url)
 const Database = require('better-sqlite3')
@@ -175,14 +176,13 @@ function getYesterday(todayStr) {
 
 function checkDailyReset() {
   const settings = readSettings()
-  const today = new Date().toISOString().split('T')[0]
+  const today = getLogicalToday()
 
-  // ── Midnight progress reset (always) ──────────────────────────
+  // ── 5 AM EST progress reset (always) ──────────────────────────
   const resetAt = settings.progressResetAt
   const resetDay = resetAt ? resetAt.split('T')[0] : null
   if (resetDay !== today) {
-    const midnight = new Date()
-    midnight.setHours(0, 0, 0, 0)
+    const resetTime = getResetTimestamp()
 
     // ── Progression: XP penalty & streak logic ────────────────────
     const boardCleared = settings.boardClearedToday || false
@@ -238,7 +238,7 @@ function checkDailyReset() {
     progressionUpdates.tasksCompletedToday = 0
     progressionUpdates.freeXPTaskIds = '[]'
 
-    upsertSettings({ progressResetAt: midnight.toISOString(), ...progressionUpdates })
+    upsertSettings({ progressResetAt: resetTime, ...progressionUpdates })
   }
 
   // ── Daily task reset (opt-in) ──────────────────────────────────
@@ -392,7 +392,7 @@ ipcMain.handle('progression:awardXP', (_e, { xpAmount, tasksCompletedToday }) =>
 
 ipcMain.handle('progression:boardCleared', () => {
   const settings = readSettings()
-  const today = new Date().toISOString().split('T')[0]
+  const today = getLogicalToday()
   const streakLastDate = settings.streakLastDate ?? null
   const oldStreak = settings.streakCount ?? 0
   const yesterday = getYesterday(today)

@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import useTaskStore from '@/store/tasks'
 
@@ -20,6 +20,24 @@ export default function TaskInput() {
   const todayCount = isToday ? tasks.filter(t => t.status === 'today').length : 0
   const isFull = isToday && todayCount >= taskSlots
   const placeholder = activeTab === 'later' ? 'Park this for later...' : 'What needs to happen today?'
+
+  // Auto-focus input when user starts typing anywhere in the app
+  useEffect(() => {
+    const handleGlobalKeyDown = (e) => {
+      // Skip if already focused on an input/textarea
+      const active = document.activeElement
+      if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return
+
+      // Skip modifier keys (except shift for capitals), nav keys, function keys, etc.
+      if (e.metaKey || e.ctrlKey || e.altKey) return
+      if (e.key.length !== 1) return // Only printable characters (length === 1)
+
+      // Focus the input and let the character through
+      inputRef.current?.focus()
+    }
+    window.addEventListener('keydown', handleGlobalKeyDown)
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown)
+  }, [])
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
