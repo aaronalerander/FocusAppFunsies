@@ -46,4 +46,9 @@ contextBridge.exposeInMainWorld('focusAPI', {
     ipcRenderer.on('bleed-tick', wrapped)
     return () => ipcRenderer.removeListener('bleed-tick', wrapped)
   },
+  onTaskAddedExternally: (callback) => {
+    const wrapped = (_event, task) => callback(task)
+    ipcRenderer.on('task-added-externally', wrapped)
+    return () => ipcRenderer.removeListener('task-added-externally', wrapped)
+  },
 })

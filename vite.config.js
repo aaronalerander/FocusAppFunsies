@@ -37,6 +37,25 @@ export default defineConfig({
             }
           }
         }
+      },
+      {
+        entry: 'electron/preload-quick-entry.cjs',
+        onstart(options) {
+          options.reload()
+        },
+        vite: {
+          build: {
+            outDir: 'dist-electron',
+            lib: {
+              entry: 'electron/preload-quick-entry.cjs',
+              formats: ['cjs'],
+              fileName: () => 'preload-quick-entry.cjs'
+            },
+            rollupOptions: {
+              external: ['electron']
+            }
+          }
+        }
       }
     ]),
     renderer()
@@ -47,6 +66,12 @@ export default defineConfig({
     }
   },
   build: {
-    outDir: 'dist'
+    outDir: 'dist',
+    rollupOptions: {
+      input: {
+        main: resolve(__dirname, 'index.html'),
+        'quick-entry': resolve(__dirname, 'quick-entry.html'),
+      }
+    }
   }
 })

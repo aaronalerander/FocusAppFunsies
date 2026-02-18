@@ -166,6 +166,13 @@ const useTaskStore = create((set, get) => ({
           }))
         })
       }
+
+      // Listen for tasks added from the quick-entry panel
+      if (window.focusAPI.onTaskAddedExternally) {
+        window.focusAPI.onTaskAddedExternally((task) => {
+          set(state => ({ tasks: [...state.tasks, task] }))
+        })
+      }
     } catch (err) {
       console.error('Failed to initialize Focus store:', err)
       set(state => ({ ui: { ...state.ui, isLoaded: true } }))

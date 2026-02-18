@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, nativeTheme } from 'electron'
+import { app, BrowserWindow, ipcMain, nativeTheme, globalShortcut } from 'electron'
 import { fileURLToPath } from 'url'
 import { join, dirname } from 'path'
 import { createRequire } from 'module'
@@ -11,9 +11,18 @@ import {
   calculateCatchUpBleed,
 } from '../src/utils/progression.js'
 import { getLogicalToday, getResetTimestamp } from '../src/utils/dateUtils.js'
+import { createQuickEntryWindow, toggleQuickEntry, hideQuickEntry } from './quickEntry.js'
+
+// Suppress EPIPE errors from Electron's internal IPC pipe to hidden renderer processes.
+// These are harmless — they occur when a renderer's stdin pipe closes before a write completes.
+process.on('uncaughtException', (err) => {
+  if (err.code === 'EPIPE') return
+  throw err
+})
 
 const require = createRequire(import.meta.url)
 const Database = require('better-sqlite3')
+const crypto = require('crypto')
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -464,6 +473,10 @@ app.whenReady().then(() => {
   scheduleDailyResetTimer()
   startBleedInterval()
 
+  // Quick-entry global shortcut (Option+Space)
+  createQuickEntryWindow()
+  globalShortcut.register('Alt+Space', toggleQuickEntry)
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
     // Re-check reset when app is re-activated (e.g. after sleeping overnight)
@@ -478,6 +491,10 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
+})
+
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll()
 })
 
 // ── IPC Handlers ──────────────────────────────────────────────
@@ -709,4 +726,43 @@ ipcMain.handle('hardReset', () => {
   // Restart bleed interval with a clean slate
   startBleedInterval()
   return { success: true }
+})
+
+// ── Quick Entry IPC Handlers ─────────────────────────────────
+
+ipcMain.handle('quick-entry:addTask', (_e, { text, tag }) => {
+  if (!text || !text.trim()) return { success: false }
+
+  const tasks = db.prepare('SELECT * FROM tasks ORDER BY "order" ASC').all()
+  const laterCount = tasks.filter(t => t.status === 'later').length
+  const todayCount = tasks.filter(t => t.status === 'today').length
+  const targetStatus = (laterCount === 0 && todayCount === 0) ? 'today' : 'later'
+  const statusCount = tasks.filter(t => t.status === targetStatus).length
+
+  const task = {
+    id: crypto.randomUUID(),
+    text: text.trim(),
+    status: targetStatus,
+    createdAt: new Date().toISOString(),
+    completedAt: null,
+    movedToLaterAt: null,
+    order: statusCount,
+    tag: tag && tag.trim() ? tag.trim() : null,
+  }
+
+  db.prepare(`
+    INSERT INTO tasks (id, text, status, createdAt, completedAt, movedToLaterAt, "order", tag)
+    VALUES (@id, @text, @status, @createdAt, @completedAt, @movedToLaterAt, @order, @tag)
+  `).run(task)
+
+  // Notify main window to sync the new task
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('task-added-externally', task)
+  }
+
+  return { success: true, task }
+})
+
+ipcMain.on('quick-entry:hide', () => {
+  hideQuickEntry()
 })

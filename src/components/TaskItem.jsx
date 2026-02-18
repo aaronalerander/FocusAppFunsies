@@ -274,7 +274,7 @@ export default function TaskItem({ task, dragHandleProps }) {
       )}
 
       {/* Action buttons (hover only, not for done tasks) */}
-      {!isDone && (
+      {!isDone && (task.status === 'later' || developerMode) && (
         <AnimatePresence>
           {isHovered && !isTagEditing && (
             <motion.div
