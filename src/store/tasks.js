@@ -285,6 +285,13 @@ const useTaskStore = create((set, get) => ({
           get().autoPullFromLater()
         }, result.rankedUp ? 5500 : 2500)
       }
+
+      // In Free XP mode, auto-pull from Later when board is cleared again
+      if (isAllDone && boardClearedToday) {
+        setTimeout(() => {
+          get().autoPullFromLater()
+        }, 2500)
+      }
     } catch (err) {
       console.error('[completeTask] IPC error, firing confetti with fallback lifetime:', err)
 
