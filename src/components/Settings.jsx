@@ -150,6 +150,30 @@ export default function Settings() {
               />
             </SettingRow>
 
+            <SettingRow label="Daily reset time" description="When the board resets for a new day" isDark={isDark}>
+              <select
+                value={settings.dailyResetHourUTC ?? 10}
+                onChange={(e) => updateSettings({ dailyResetHourUTC: Number(e.target.value) })}
+                className={`px-2 py-1 rounded-lg text-xs font-sans transition-colors appearance-none cursor-pointer ${
+                  isDark
+                    ? 'bg-surface-dark text-text-dark border border-border-dark'
+                    : 'bg-white text-text-light border border-border-light'
+                }`}
+              >
+                {Array.from({ length: 24 }, (_, utcHour) => {
+                  // Convert UTC hour to local time for display
+                  const d = new Date()
+                  d.setUTCHours(utcHour, 0, 0, 0)
+                  const localStr = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+                  return (
+                    <option key={utcHour} value={utcHour}>
+                      {localStr}
+                    </option>
+                  )
+                })}
+              </select>
+            </SettingRow>
+
             <SettingRow label="Reset today's progress" description="Zero the counter without deleting completed tasks" isDark={isDark}>
               <button
                 onClick={resetTodayProgress}
@@ -181,6 +205,14 @@ export default function Settings() {
                   </button>
                 ))}
               </div>
+            </SettingRow>
+
+            <SettingRow label="Developer mode" description="Allow deleting completed tasks (reverses XP)" isDark={isDark}>
+              <Toggle
+                checked={settings.developerMode ?? false}
+                onChange={(v) => updateSettings({ developerMode: v })}
+                isDark={isDark}
+              />
             </SettingRow>
           </div>
 

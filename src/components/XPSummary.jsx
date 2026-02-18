@@ -105,15 +105,66 @@ export default function XPSummary() {
             </span>
           </motion.div>
 
-          {/* Ramp bonus */}
-          {xpSummary.tasksCompleted > 1 && (
-            <motion.div variants={itemVariants} className="flex justify-between items-center mb-3">
-              <span className={`text-xs font-sans ${isDark ? 'text-muted-dark' : 'text-muted-light'}`}>
-                Daily ramp bonus
-              </span>
-              <span className="text-sm font-sans font-semibold" style={{ color: '#FFD700' }}>
-                +{(xpSummary.totalXP - (xpSummary.tasksCompleted * 100 * xpSummary.streakMultiplier)).toFixed(0)}
-              </span>
+          {/* Loot Pulls section */}
+          {xpSummary.lootBreakdown && xpSummary.lootBreakdown.length > 0 && (
+            <motion.div variants={itemVariants} className="mb-3">
+              <div className={`text-xs font-sans mb-2 ${isDark ? 'text-muted-dark' : 'text-muted-light'}`}>
+                Loot Pulls
+              </div>
+
+              {/* Non-common tiers listed individually, highest first */}
+              {xpSummary.lootBreakdown
+                .filter(l => l.tier !== 'common')
+                .sort((a, b) => b.value - a.value)
+                .map((l, i) => (
+                  <div key={i} className="flex justify-between items-center mb-1.5">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <div
+                        className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: l.color }}
+                      />
+                      <span
+                        className="text-xs font-sans font-semibold flex-shrink-0"
+                        style={{ color: l.color }}
+                      >
+                        {l.label} {l.value}x
+                      </span>
+                      <span
+                        className={`text-xs font-sans truncate ${isDark ? 'text-muted-dark' : 'text-muted-light'}`}
+                        style={{ maxWidth: 90 }}
+                      >
+                        {l.taskText}
+                      </span>
+                    </div>
+                    <span
+                      className="text-xs font-sans font-semibold flex-shrink-0 ml-2"
+                      style={{ color: l.color }}
+                    >
+                      +{l.xpAwarded.toLocaleString()}
+                    </span>
+                  </div>
+                ))
+              }
+
+              {/* Common pulls collapsed */}
+              {(() => {
+                const commons = xpSummary.lootBreakdown.filter(l => l.tier === 'common')
+                if (commons.length === 0) return null
+                const commonTotal = commons.reduce((sum, l) => sum + (l.xpAwarded || 0), 0)
+                return (
+                  <div className="flex justify-between items-center mb-1.5">
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-[#888888]" />
+                      <span className="text-xs font-sans text-[#888888]">
+                        {commons.length} × Common 1.0x
+                      </span>
+                    </div>
+                    <span className="text-xs font-sans font-semibold text-[#888888]">
+                      +{commonTotal.toLocaleString()}
+                    </span>
+                  </div>
+                )
+              })()}
             </motion.div>
           )}
 

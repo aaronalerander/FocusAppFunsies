@@ -11,6 +11,7 @@ import Confetti from '@/components/Confetti'
 import Toast from '@/components/Toast'
 import XPSummary from '@/components/XPSummary'
 import RankUpAnimation from '@/components/RankUpAnimation'
+import SlotMachine from '@/components/SlotMachine'
 
 const tabOrder = ['today', 'later', 'done']
 
@@ -23,6 +24,7 @@ export default function App() {
   const confetti = useTaskStore(s => s.ui.confetti)
   const xpSummary = useTaskStore(s => s.ui.xpSummary)
   const rankUpAnimation = useTaskStore(s => s.ui.rankUpAnimation)
+  const slotMachine = useTaskStore(s => s.ui.slotMachine)
   const theme = useTaskStore(s => s.settings.theme)
   const openSettings = useTaskStore(s => s.openSettings)
 
@@ -116,6 +118,10 @@ export default function App() {
       </div>
 
       <Toast />
+
+      <AnimatePresence>
+        {slotMachine && <SlotMachine key="slot-machine" />}
+      </AnimatePresence>
 
       <AnimatePresence>
         {xpSummary && <XPSummary key="xp-summary" />}

@@ -173,3 +173,47 @@ export function calculateDayXP(taskCount, streakMultiplier = 1.0) {
 
   return { totalXP, breakdown }
 }
+
+// ── Hidden Multiplier Tiers ──────────────────────────────────────────────────
+
+export const MULTIPLIER_TIERS = [
+  { id: 'common',    label: 'Common',    value: 1.0,  probability: 0.55, color: '#888888' },
+  { id: 'rare',      label: 'Rare',      value: 1.5,  probability: 0.25, color: '#4A9EFF' },
+  { id: 'epic',      label: 'Epic',      value: 2.0,  probability: 0.12, color: '#9B59B6' },
+  { id: 'legendary', label: 'Legendary', value: 3.5,  probability: 0.06, color: '#FFD700' },
+  { id: 'mythic',    label: 'Mythic',    value: 10.0, probability: 0.02, color: '#FF3030' },
+]
+
+// Precomputed cumulative thresholds for weighted roll
+const MULTIPLIER_THRESHOLDS = (() => {
+  let acc = 0
+  return MULTIPLIER_TIERS.map(t => { acc += t.probability; return { ...t, threshold: acc } })
+})()
+
+/**
+ * Roll a hidden multiplier tier using weighted random selection.
+ * @returns {{ id: string, label: string, value: number, probability: number, color: string }}
+ */
+export function rollHiddenMultiplier() {
+  const r = Math.random()
+  return MULTIPLIER_THRESHOLDS.find(t => r < t.threshold) ?? MULTIPLIER_TIERS[MULTIPLIER_TIERS.length - 1]
+}
+
+/**
+ * Look up a multiplier tier object by tier id string.
+ */
+export function getMultiplierTier(tierId) {
+  return MULTIPLIER_TIERS.find(t => t.id === tierId) ?? MULTIPLIER_TIERS[0]
+}
+
+/**
+ * Calculate XP for a task with hidden multiplier applied.
+ * @param {number} tasksCompletedToday - Tasks already completed today (0-indexed before this one)
+ * @param {number} streakMultiplier - Current streak multiplier (1.0–2.0)
+ * @param {number} hiddenMultiplierValue - The hidden multiplier (1.0, 1.5, 2.0, 3.5, or 10.0)
+ * @returns {number} XP earned
+ */
+export function calculateTaskXPWithMultiplier(tasksCompletedToday, streakMultiplier, hiddenMultiplierValue) {
+  const ramp = Math.min(1 + (tasksCompletedToday * 0.15), 3.0)
+  return Math.round(BASE_XP * ramp * streakMultiplier * hiddenMultiplierValue)
+}

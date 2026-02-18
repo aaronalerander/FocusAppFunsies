@@ -1,18 +1,21 @@
 /**
- * Get the "logical today" date string (YYYY-MM-DD) based on a 5:00 AM EST
- * day boundary.  Before 5 AM EST, the logical day is still "yesterday".
- *
- * 5 AM EST = 10:00 UTC, so we simply check if we're before 10:00 UTC.
+ * Default reset hour in UTC.  10 UTC = 5:00 AM EST.
  */
-export function getLogicalToday() {
+const DEFAULT_RESET_HOUR_UTC = 10
+
+/**
+ * Get the "logical today" date string (YYYY-MM-DD) based on a configurable
+ * daily reset hour.  Before the reset hour, the logical day is still "yesterday".
+ *
+ * @param {number} [resetHourUTC=10] - UTC hour (0-23) of the daily reset
+ */
+export function getLogicalToday(resetHourUTC = DEFAULT_RESET_HOUR_UTC) {
   const now = new Date()
   const utcTotalMinutes = now.getUTCHours() * 60 + now.getUTCMinutes()
-  const resetMinutesUTC = 10 * 60 // 10:00 UTC = 5:00 AM EST
+  const resetMinutesUTC = resetHourUTC * 60
 
-  // Start from the current UTC date
   const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
 
-  // If before 10:00 UTC (5 AM EST), the logical day is still yesterday
   if (utcTotalMinutes < resetMinutesUTC) {
     d.setUTCDate(d.getUTCDate() - 1)
   }
@@ -21,20 +24,43 @@ export function getLogicalToday() {
 }
 
 /**
- * Get the ISO timestamp for the most recent 5 AM EST reset boundary.
+ * Get the ISO timestamp for the most recent daily reset boundary.
  * Used as the progressResetAt marker.
+ *
+ * @param {number} [resetHourUTC=10] - UTC hour (0-23) of the daily reset
  */
-export function getResetTimestamp() {
+export function getResetTimestamp(resetHourUTC = DEFAULT_RESET_HOUR_UTC) {
   const now = new Date()
   const utcTotalMinutes = now.getUTCHours() * 60 + now.getUTCMinutes()
-  const resetMinutesUTC = 10 * 60 // 10:00 UTC = 5:00 AM EST
+  const resetMinutesUTC = resetHourUTC * 60
 
-  const reset = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 10, 0, 0, 0))
+  const reset = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), resetHourUTC, 0, 0, 0))
 
-  // If before 10:00 UTC, the most recent reset was yesterday at 10:00 UTC
   if (utcTotalMinutes < resetMinutesUTC) {
     reset.setUTCDate(reset.getUTCDate() - 1)
   }
 
   return reset.toISOString()
+}
+
+/**
+ * Get the logical day (YYYY-MM-DD) for a given ISO timestamp, using the
+ * configured daily reset hour.  Timestamps before the reset hour on a given
+ * calendar day belong to the previous logical day.
+ *
+ * @param {string} isoString - ISO timestamp to classify
+ * @param {number} [resetHourUTC=10] - UTC hour (0-23) of the daily reset
+ */
+export function getLogicalDay(isoString, resetHourUTC = DEFAULT_RESET_HOUR_UTC) {
+  const date = new Date(isoString)
+  const utcTotalMinutes = date.getUTCHours() * 60 + date.getUTCMinutes()
+  const resetMinutesUTC = resetHourUTC * 60
+
+  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()))
+
+  if (utcTotalMinutes < resetMinutesUTC) {
+    d.setUTCDate(d.getUTCDate() - 1)
+  }
+
+  return d.toISOString().split('T')[0]
 }

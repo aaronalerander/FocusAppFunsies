@@ -3,13 +3,16 @@ import { v4 as uuidv4 } from 'uuid'
 import { playCompletionSound } from '@/hooks/useSound'
 import {
   calculateTaskXP,
+  calculateTaskXPWithMultiplier,
+  rollHiddenMultiplier,
+  getMultiplierTier,
   getStreakMultiplier,
   getRankForXP,
   getRankById,
   getNextRank,
   calculateDayXP
 } from '@/utils/progression'
-import { getLogicalToday } from '@/utils/dateUtils'
+import { getLogicalToday, getResetTimestamp } from '@/utils/dateUtils'
 
 const useTaskStore = create((set, get) => ({
   tasks: [],
@@ -20,7 +23,9 @@ const useTaskStore = create((set, get) => ({
     dailyResetEnabled: false,
     lifetimeCompleted: 0,
     lastResetDate: null,
-    progressResetAt: null
+    progressResetAt: null,
+    dailyResetHourUTC: 10,
+    developerMode: false,
   },
   progression: {
     currentXP: 0,
@@ -43,6 +48,8 @@ const useTaskStore = create((set, get) => ({
     toast: null,              // { message, type: 'info'|'warning'|'success', id }
     xpSummary: null,          // XP summary overlay data
     rankUpAnimation: null,    // { fromRankId, toRankId, newSlots }
+    slotMachine: null,        // { tier, value, color, label, xpAmount, taskText, taskId } | null
+    pendingSlotMachineResolve: null,  // function | null — resolved when slot machine animation completes
   },
 
   // ── Selectors ──────────────────────────────────────────────────
@@ -63,13 +70,13 @@ const useTaskStore = create((set, get) => ({
       .sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt)),
 
   todayProgress: () => {
-    const today = getLogicalToday()
-    const resetAt = get().settings.progressResetAt
+    const resetHour = get().settings.dailyResetHourUTC ?? 10
+    const resetBoundary = getResetTimestamp(resetHour)
 
     const allTodayTasks = get().tasks.filter(t => {
       if (t.status === 'today') return true
-      if (t.status === 'done' && t.completedAt && t.completedAt.startsWith(today)) {
-        if (resetAt && t.completedAt <= resetAt) return false
+      // Count done tasks completed AFTER the most recent daily reset
+      if (t.status === 'done' && t.completedAt && t.completedAt > resetBoundary) {
         return true
       }
       return false
@@ -122,6 +129,22 @@ const useTaskStore = create((set, get) => ({
         }, 1000)
         await window.focusAPI.progression.clearDerank()
         set(state => ({ progression: { ...state.progression, pendingDerank: null } }))
+      }
+
+      // Listen for daily reset events (fires at 5 AM EST or on app re-activate)
+      if (window.focusAPI.onDailyReset) {
+        window.focusAPI.onDailyReset(async () => {
+          const [newTasks, newSettings, newProgression] = await Promise.all([
+            window.focusAPI.tasks.readAll(),
+            window.focusAPI.settings.read(),
+            window.focusAPI.progression.read()
+          ])
+          set({
+            tasks: newTasks || [],
+            settings: { ...get().settings, ...(newSettings || {}) },
+            progression: { ...get().progression, ...(newProgression || {}) },
+          })
+        })
       }
     } catch (err) {
       console.error('Failed to initialize Focus store:', err)
@@ -180,12 +203,52 @@ const useTaskStore = create((set, get) => ({
     if (!task || task.status === 'done') return
 
     const isFreeXPTask = get().progression.freeXPTaskIds.includes(id)
-    const completedAt = new Date().toISOString()
-    const changes = { status: 'done', completedAt }
+
+    // ── Roll hidden multiplier (or reuse stored roll on re-completion) ──
+    let multiplierRoll
+    if (task.hidden_multiplier_tier) {
+      // Re-use immutable stored roll from previous completion
+      multiplierRoll = getMultiplierTier(task.hidden_multiplier_tier)
+    } else {
+      multiplierRoll = rollHiddenMultiplier()
+    }
+
+    const { tasksCompletedToday, streakCount, boardClearedToday } = get().progression
+    const streakMult = getStreakMultiplier(streakCount)
+    const xpAmount = calculateTaskXPWithMultiplier(tasksCompletedToday, streakMult, multiplierRoll.value)
 
     set(state => ({
       ui: { ...state.ui, completingTaskId: id }
     }))
+
+    // ── Show slot machine animation and block until it completes ──
+    await new Promise(resolve => {
+      set(state => ({
+        ui: {
+          ...state.ui,
+          slotMachine: {
+            tier: multiplierRoll.id,
+            value: multiplierRoll.value,
+            color: multiplierRoll.color,
+            label: multiplierRoll.label,
+            xpAmount,
+            taskText: task.text,
+            taskId: id,
+          },
+          pendingSlotMachineResolve: resolve,
+        }
+      }))
+    })
+
+    // ── Animation complete — now update task and award XP ──
+    const completedAt = new Date().toISOString()
+    const changes = {
+      status: 'done',
+      completedAt,
+      hidden_multiplier_tier: multiplierRoll.id,
+      hidden_multiplier_value: multiplierRoll.value,
+      final_xp_awarded: xpAmount,
+    }
 
     // Optimistic update
     set(state => ({
@@ -217,9 +280,6 @@ const useTaskStore = create((set, get) => ({
       }, 600)
 
       // ── XP Award ──────────────────────────────────────────────
-      const { tasksCompletedToday, streakCount, boardClearedToday } = get().progression
-      const streakMult = getStreakMultiplier(streakCount)
-      const xpAmount = calculateTaskXP(tasksCompletedToday, streakMult)
       const newTasksCompleted = tasksCompletedToday + 1
 
       const result = await window.focusAPI.progression.awardXP({
@@ -264,14 +324,29 @@ const useTaskStore = create((set, get) => ({
           }
         }))
 
-        // Build XP summary data
-        const dayXP = calculateDayXP(newTasksCompleted, streakMult)
+        // Build XP summary data with actual loot pull breakdown
+        const resetBoundary = getResetTimestamp(get().settings.dailyResetHourUTC ?? 10)
+        const todayDoneTasks = get().tasks.filter(
+          t => t.status === 'done' && t.completedAt && t.completedAt > resetBoundary
+        )
+        const lootBreakdown = todayDoneTasks
+          .filter(t => t.hidden_multiplier_tier)
+          .map(t => ({
+            taskText: t.text,
+            tier: t.hidden_multiplier_tier,
+            value: t.hidden_multiplier_value,
+            xpAwarded: t.final_xp_awarded || 0,
+            color: getMultiplierTier(t.hidden_multiplier_tier).color,
+            label: getMultiplierTier(t.hidden_multiplier_tier).label,
+          }))
+        const actualTotalXP = todayDoneTasks.reduce((sum, t) => sum + (t.final_xp_awarded || 0), 0)
+
         setTimeout(() => {
           set(state => ({
             ui: { ...state.ui, xpSummary: {
               tasksCompleted: newTasksCompleted,
-              breakdown: dayXP.breakdown,
-              totalXP: dayXP.totalXP,
+              totalXP: actualTotalXP || calculateDayXP(newTasksCompleted, streakMult).totalXP,
+              lootBreakdown,
               streakDays: boardResult.streakCount,
               streakMultiplier: streakMult,
               currentXP: result.newXP,
@@ -423,6 +498,8 @@ const useTaskStore = create((set, get) => ({
   },
 
   deleteTask: async (id) => {
+    const task = get().tasks.find(t => t.id === id)
+
     // Clean up freeXPTaskIds if deleting a free XP task
     const { freeXPTaskIds } = get().progression
     if (freeXPTaskIds.includes(id)) {
@@ -440,6 +517,23 @@ const useTaskStore = create((set, get) => ({
       ui: { ...state.ui, confirmDeleteId: null }
     }))
     await window.focusAPI.tasks.delete(id)
+
+    // If the task was completed and has XP, deduct it
+    if (task?.status === 'done' && task?.final_xp_awarded > 0) {
+      try {
+        const result = await window.focusAPI.progression.deductXP({ xpAmount: task.final_xp_awarded })
+        set(state => ({
+          progression: {
+            ...state.progression,
+            currentXP: result.newXP,
+            currentRankId: result.newRankId,
+          }
+        }))
+        get().showToast(`-${task.final_xp_awarded} XP removed`, 'info')
+      } catch (err) {
+        console.error('[deleteTask] XP deduction failed:', err)
+      }
+    }
   },
 
   reorderTasks: async (orderedIds) => {
@@ -477,6 +571,14 @@ const useTaskStore = create((set, get) => ({
   dismissXPSummary: () => set(state => ({ ui: { ...state.ui, xpSummary: null } })),
 
   dismissRankUpAnimation: () => set(state => ({ ui: { ...state.ui, rankUpAnimation: null } })),
+
+  dismissSlotMachine: () => {
+    const resolve = get().ui.pendingSlotMachineResolve
+    if (resolve) resolve()
+    set(state => ({
+      ui: { ...state.ui, slotMachine: null, pendingSlotMachineResolve: null }
+    }))
+  },
 
   autoPullFromLater: async () => {
     const maxSlots = get().taskSlots()

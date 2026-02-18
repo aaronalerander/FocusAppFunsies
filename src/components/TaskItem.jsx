@@ -97,6 +97,7 @@ export default function TaskItem({ task, dragHandleProps }) {
   const freeXPTaskIds = useTaskStore(s => s.progression.freeXPTaskIds)
   const boardClearedToday = useTaskStore(s => s.progression.boardClearedToday)
   const theme = useTaskStore(s => s.settings.theme)
+  const developerMode = useTaskStore(s => s.settings.developerMode ?? false)
   const isDark = theme === 'dark'
   const isFreeXP = task.status === 'today' && freeXPTaskIds.includes(task.id)
   const accentColor = boardClearedToday ? GOLD : null
@@ -135,7 +136,7 @@ export default function TaskItem({ task, dragHandleProps }) {
       onMouseLeave={() => setIsHovered(false)}
       onContextMenu={(e) => {
         e.preventDefault()
-        confirmDelete(task.id)
+        if (developerMode) confirmDelete(task.id)
       }}
     >
       {/* Drag handle */}
@@ -283,41 +284,45 @@ export default function TaskItem({ task, dragHandleProps }) {
               transition={{ duration: 0.15 }}
               className="flex items-center gap-1 flex-shrink-0"
             >
-              {/* Move button */}
-              <button
-                onClick={() => moveTask(task.id, task.status === 'today' ? 'later' : 'today')}
-                title={task.status === 'today' ? 'Move to Later' : 'Move to Today'}
-                className={`p-1.5 rounded-lg text-xs font-sans transition-colors ${
-                  isDark
-                    ? 'text-muted-dark hover:text-text-dark hover:bg-border-dark'
-                    : 'text-muted-light hover:text-text-light hover:bg-border-light'
-                }`}
-              >
-                {task.status === 'today' ? (
-                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                    <path d="M3 7h8M8 4l3 3-3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                ) : (
-                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                    <path d="M11 7H3M6 4L3 7l3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                )}
-              </button>
+              {/* Move button — always show for later→today, but hide today→later unless dev mode */}
+              {(task.status === 'later' || developerMode) && (
+                <button
+                  onClick={() => moveTask(task.id, task.status === 'today' ? 'later' : 'today')}
+                  title={task.status === 'today' ? 'Move to Later' : 'Move to Today'}
+                  className={`p-1.5 rounded-lg text-xs font-sans transition-colors ${
+                    isDark
+                      ? 'text-muted-dark hover:text-text-dark hover:bg-border-dark'
+                      : 'text-muted-light hover:text-text-light hover:bg-border-light'
+                  }`}
+                >
+                  {task.status === 'today' ? (
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                      <path d="M3 7h8M8 4l3 3-3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  ) : (
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                      <path d="M11 7H3M6 4L3 7l3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  )}
+                </button>
+              )}
 
-              {/* Delete button */}
-              <button
-                onClick={() => confirmDelete(task.id)}
-                title="Delete"
-                className={`p-1.5 rounded-lg transition-colors ${
-                  isDark
-                    ? 'text-muted-dark hover:text-red-400 hover:bg-border-dark'
-                    : 'text-muted-light hover:text-red-500 hover:bg-border-light'
-                }`}
-              >
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                  <path d="M2 3.5h10M5.5 3.5V2.5h3V3.5M5 6v4.5M9 6v4.5M3.5 3.5l.5 8h6l.5-8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-              </button>
+              {/* Delete button — only in developer mode */}
+              {developerMode && (
+                <button
+                  onClick={() => confirmDelete(task.id)}
+                  title="Delete"
+                  className={`p-1.5 rounded-lg transition-colors ${
+                    isDark
+                      ? 'text-muted-dark hover:text-red-400 hover:bg-border-dark'
+                      : 'text-muted-light hover:text-red-500 hover:bg-border-light'
+                  }`}
+                >
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                    <path d="M2 3.5h10M5.5 3.5V2.5h3V3.5M5 6v4.5M9 6v4.5M3.5 3.5l.5 8h6l.5-8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </button>
+              )}
             </motion.div>
           )}
         </AnimatePresence>

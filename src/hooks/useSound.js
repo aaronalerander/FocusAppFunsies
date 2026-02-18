@@ -86,6 +86,109 @@ function playTier5() {
   tone(ac, C5 / 2, t, 0.6, 0.04, 'square')
 }
 
+// ── Slot Machine Sounds ──────────────────────────────────────────────────────
+
+// Short percussive click played when each reel locks
+export function playSlotLock() {
+  try {
+    const ac = getCtx()
+    const t = ac.currentTime
+    tone(ac, 220, t,        0.10, 0.18, 'square')
+    tone(ac, 440, t + 0.01, 0.07, 0.07, 'triangle')
+  } catch (err) {
+    console.warn('[useSound] slot lock error:', err)
+  }
+}
+
+// Common — single soft ding, no fanfare
+export function playSlotResultCommon() {
+  try {
+    const ac = getCtx()
+    const t = ac.currentTime
+    tone(ac, C5, t, 0.35, 0.10)
+  } catch (err) {
+    console.warn('[useSound] slot common error:', err)
+  }
+}
+
+// Rare — rising two-note with shimmer
+export function playSlotResultRare() {
+  try {
+    const ac = getCtx()
+    const t = ac.currentTime
+    tone(ac, C5, t,        0.40, 0.13)
+    tone(ac, E5, t + 0.14, 0.50, 0.12)
+    tone(ac, E5 * 2, t + 0.14, 0.50, 0.04, 'triangle')
+  } catch (err) {
+    console.warn('[useSound] slot rare error:', err)
+  }
+}
+
+// Epic — three-note chime + shimmer
+export function playSlotResultEpic() {
+  try {
+    const ac = getCtx()
+    const t = ac.currentTime
+    tone(ac, C5, t,        0.45, 0.14)
+    tone(ac, G5, t + 0.12, 0.50, 0.13)
+    tone(ac, C6, t + 0.24, 0.60, 0.12)
+    tone(ac, C6, t + 0.24, 0.80, 0.05, 'triangle')
+  } catch (err) {
+    console.warn('[useSound] slot epic error:', err)
+  }
+}
+
+// Legendary — full ascending arpeggio + chord hold + bell
+export function playSlotResultLegendary() {
+  try {
+    const ac = getCtx()
+    const t = ac.currentTime
+    tone(ac, C5, t,        0.45, 0.14)
+    tone(ac, E5, t + 0.09, 0.48, 0.13)
+    tone(ac, G5, t + 0.18, 0.52, 0.12)
+    tone(ac, C6, t + 0.27, 0.62, 0.12)
+    tone(ac, E6, t + 0.36, 0.68, 0.11)
+    // Chord hold
+    tone(ac, C5, t + 0.44, 0.90, 0.08)
+    tone(ac, E5, t + 0.44, 0.90, 0.07)
+    tone(ac, G5, t + 0.44, 0.90, 0.07)
+    tone(ac, C6, t + 0.44, 0.90, 0.07)
+    // Bell on top
+    tone(ac, E6, t + 0.50, 0.80, 0.06, 'triangle')
+  } catch (err) {
+    console.warn('[useSound] slot legendary error:', err)
+  }
+}
+
+// Mythic — sub-bass rumble + full arpeggio + hold + second flourish
+export function playSlotResultMythic() {
+  try {
+    const ac = getCtx()
+    const t = ac.currentTime
+    // Sub-bass rumble
+    tone(ac, 55,  t, 1.2, 0.06, 'sawtooth')
+    tone(ac, 110, t, 1.0, 0.05, 'sawtooth')
+    // Rising arpeggio
+    tone(ac, C5, t + 0.05, 0.45, 0.15)
+    tone(ac, E5, t + 0.12, 0.48, 0.14)
+    tone(ac, G5, t + 0.19, 0.50, 0.13)
+    tone(ac, C6, t + 0.26, 0.58, 0.13)
+    tone(ac, E6, t + 0.33, 0.68, 0.12)
+    // Triumphant chord hold
+    tone(ac, C5, t + 0.50, 1.20, 0.10)
+    tone(ac, E5, t + 0.50, 1.20, 0.09)
+    tone(ac, G5, t + 0.50, 1.20, 0.09)
+    tone(ac, C6, t + 0.50, 1.20, 0.09)
+    tone(ac, E6, t + 0.55, 1.00, 0.08, 'triangle')
+    // Second flourish at ~1s
+    tone(ac, C6,       t + 1.00, 0.50, 0.10)
+    tone(ac, E6,       t + 1.08, 0.50, 0.09)
+    tone(ac, C6 * 1.5, t + 1.16, 0.60, 0.08, 'triangle')
+  } catch (err) {
+    console.warn('[useSound] slot mythic error:', err)
+  }
+}
+
 // ── Public API ──────────────────────────────────────────────────────────────
 // completedToday: number of tasks completed so far today (including this one)
 // isAllDone:      true if this completion clears the entire today list

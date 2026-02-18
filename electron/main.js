@@ -45,6 +45,11 @@ try {
   // Column already exists — safe to ignore
 }
 
+// Add hidden multiplier columns for loot pull feature
+try { db.exec('ALTER TABLE tasks ADD COLUMN hidden_multiplier_tier TEXT') } catch (_) {}
+try { db.exec('ALTER TABLE tasks ADD COLUMN hidden_multiplier_value REAL') } catch (_) {}
+try { db.exec('ALTER TABLE tasks ADD COLUMN final_xp_awarded INTEGER') } catch (_) {}
+
 // ── Default settings ──────────────────────────────────────────
 
 const SETTING_DEFAULTS = {
@@ -55,6 +60,7 @@ const SETTING_DEFAULTS = {
   lifetimeCompleted: 0,
   lastResetDate: null,
   progressResetAt: null,   // ISO timestamp — completed tasks before this are excluded from today's counter
+  dailyResetHourUTC: 10,   // UTC hour (0-23) for daily board reset. Default 10 = 5:00 AM EST
 
   // ── Progression / Gamification ───────────────────────────────
   currentXP: 0,
@@ -176,13 +182,17 @@ function getYesterday(todayStr) {
 
 function checkDailyReset() {
   const settings = readSettings()
-  const today = getLogicalToday()
+  const resetHour = settings.dailyResetHourUTC ?? 10
+  const today = getLogicalToday(resetHour)
+  const resetTime = getResetTimestamp(resetHour)
 
   // ── 5 AM EST progress reset (always) ──────────────────────────
+  // Compare against the exact reset timestamp, not just the date portion,
+  // so stale values from the old midnight-based reset are detected correctly.
   const resetAt = settings.progressResetAt
-  const resetDay = resetAt ? resetAt.split('T')[0] : null
-  if (resetDay !== today) {
-    const resetTime = getResetTimestamp()
+  let didReset = false
+  if (resetAt !== resetTime) {
+    didReset = true
 
     // ── Progression: XP penalty & streak logic ────────────────────
     const boardCleared = settings.boardClearedToday || false
@@ -241,6 +251,11 @@ function checkDailyReset() {
     upsertSettings({ progressResetAt: resetTime, ...progressionUpdates })
   }
 
+  // Notify renderer to reload state after a daily reset
+  if (didReset && mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('daily-reset')
+  }
+
   // ── Daily task reset (opt-in) ──────────────────────────────────
   if (!settings.dailyResetEnabled) return
   if (settings.lastResetDate === today) return
@@ -252,12 +267,46 @@ function checkDailyReset() {
   upsertSettings({ lastResetDate: today })
 }
 
+/**
+ * Schedule a timer to fire at the next daily reset boundary,
+ * so the reset happens even if the app stays open overnight.
+ */
+let resetTimerId = null
+function scheduleDailyResetTimer() {
+  if (resetTimerId) clearTimeout(resetTimerId)
+
+  const settings = readSettings()
+  const resetHour = settings.dailyResetHourUTC ?? 10
+
+  const now = new Date()
+  const utcTotalMinutes = now.getUTCHours() * 60 + now.getUTCMinutes()
+  const resetMinutesUTC = resetHour * 60
+
+  let msUntilReset
+  if (utcTotalMinutes < resetMinutesUTC) {
+    msUntilReset = (resetMinutesUTC - utcTotalMinutes) * 60 * 1000
+  } else {
+    msUntilReset = ((24 * 60 - utcTotalMinutes) + resetMinutesUTC) * 60 * 1000
+  }
+
+  // Add a small buffer (5 seconds) to ensure we're past the boundary
+  msUntilReset += 5000
+
+  resetTimerId = setTimeout(() => {
+    checkDailyReset()
+    scheduleDailyResetTimer()
+  }, msUntilReset)
+}
+
 app.whenReady().then(() => {
   createWindow()
   checkDailyReset()
+  scheduleDailyResetTimer()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    // Re-check reset when app is re-activated (e.g. after sleeping overnight)
+    checkDailyReset()
   })
 })
 
@@ -293,7 +342,8 @@ ipcMain.handle('task:add', (_e, task) => {
 })
 
 ipcMain.handle('task:update', (_e, { id, changes }) => {
-  const allowed = ['text', 'status', 'completedAt', 'movedToLaterAt', 'order', 'tag']
+  const allowed = ['text', 'status', 'completedAt', 'movedToLaterAt', 'order', 'tag',
+    'hidden_multiplier_tier', 'hidden_multiplier_value', 'final_xp_awarded']
   const cols = Object.keys(changes).filter(k => allowed.includes(k))
   if (cols.length === 0) return { success: true }
 
@@ -328,6 +378,10 @@ ipcMain.handle('settings:write', (_e, settings) => {
 
 ipcMain.handle('settings:update', (_e, changes) => {
   upsertSettings(changes)
+  // Reschedule the daily reset timer if the reset hour changed
+  if ('dailyResetHourUTC' in changes) {
+    scheduleDailyResetTimer()
+  }
   return { success: true }
 })
 
@@ -392,7 +446,8 @@ ipcMain.handle('progression:awardXP', (_e, { xpAmount, tasksCompletedToday }) =>
 
 ipcMain.handle('progression:boardCleared', () => {
   const settings = readSettings()
-  const today = getLogicalToday()
+  const resetHour = settings.dailyResetHourUTC ?? 10
+  const today = getLogicalToday(resetHour)
   const streakLastDate = settings.streakLastDate ?? null
   const oldStreak = settings.streakCount ?? 0
   const yesterday = getYesterday(today)
@@ -453,6 +508,21 @@ ipcMain.handle('progression:reset', () => {
 ipcMain.handle('progression:clearDerank', () => {
   upsertSettings({ pendingDerank: null })
   return { success: true }
+})
+
+ipcMain.handle('progression:deductXP', (_e, { xpAmount }) => {
+  const settings = readSettings()
+  const oldXP = settings.currentXP ?? 0
+  const oldRankId = settings.currentRankId ?? 'bronze_4'
+  const newXP = Math.max(0, oldXP - xpAmount)
+  const newRank = getRankForXP(newXP)
+
+  upsertSettings({
+    currentXP: newXP,
+    currentRankId: newRank.id,
+  })
+
+  return { newXP, newRankId: newRank.id, deranked: newRank.id !== oldRankId, previousRankId: oldRankId }
 })
 
 ipcMain.handle('hardReset', () => {

@@ -34,6 +34,11 @@ contextBridge.exposeInMainWorld('focusAPI', {
     removeFreeXPTask: (taskId) => ipcRenderer.invoke('progression:removeFreeXPTask', taskId),
     reset: () => ipcRenderer.invoke('progression:reset'),
     clearDerank: () => ipcRenderer.invoke('progression:clearDerank'),
+    deductXP: (data) => ipcRenderer.invoke('progression:deductXP', data),
   },
   hardReset: () => ipcRenderer.invoke('hardReset'),
+  onDailyReset: (callback) => {
+    ipcRenderer.on('daily-reset', callback)
+    return () => ipcRenderer.removeListener('daily-reset', callback)
+  },
 })

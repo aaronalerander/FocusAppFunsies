@@ -2,7 +2,24 @@ import { useState, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import useTaskStore from '@/store/tasks'
 import TaskItem from '@/components/TaskItem'
-import { getLogicalToday } from '@/utils/dateUtils'
+import { getLogicalToday, getLogicalDay } from '@/utils/dateUtils'
+
+function DeleteButton({ onClick, isDark }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex-shrink-0 p-1.5 rounded-lg transition-colors ${
+        isDark
+          ? 'text-muted-dark hover:text-red-400 hover:bg-red-400/10'
+          : 'text-muted-light hover:text-red-500 hover:bg-red-500/10'
+      }`}
+    >
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+        <path d="M2 3.5h10M5.5 3.5V2.5h3V3.5M5 6v4.5M9 6v4.5M3.5 3.5l.5 8h6l.5-8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    </button>
+  )
+}
 
 const PAGE_SIZE = 20
 
@@ -23,10 +40,10 @@ function EmptyState({ isDark }) {
   )
 }
 
-function formatDayHeader(dateStr) {
+function formatDayHeader(dateStr, resetHourUTC) {
   const date = new Date(dateStr + 'T12:00:00')
   const today = new Date()
-  const logicalToday = getLogicalToday()
+  const logicalToday = getLogicalToday(resetHourUTC)
   const logicalYesterday = new Date(logicalToday + 'T12:00:00')
   logicalYesterday.setDate(logicalYesterday.getDate() - 1)
   const logicalYesterdayStr = logicalYesterday.toISOString().split('T')[0]
@@ -42,7 +59,7 @@ function formatDayHeader(dateStr) {
   })
 }
 
-function DaySection({ dateStr, tasks, isDark }) {
+function DaySection({ dateStr, tasks, isDark, resetHourUTC, developerMode, onDelete }) {
   const [isOpen, setIsOpen] = useState(false)
 
   return (
@@ -66,7 +83,7 @@ function DaySection({ dateStr, tasks, isDark }) {
             <path d="M4 2l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
           </motion.svg>
           <span className={`text-sm font-sans font-medium ${isDark ? 'text-text-dark' : 'text-text-light'}`}>
-            {formatDayHeader(dateStr)}
+            {formatDayHeader(dateStr, resetHourUTC)}
           </span>
         </div>
         <span className={`text-xs font-sans tabular-nums ${isDark ? 'text-muted-dark' : 'text-muted-light'} opacity-60`}>
@@ -84,8 +101,15 @@ function DaySection({ dateStr, tasks, isDark }) {
             style={{ overflow: 'hidden' }}
           >
             {tasks.map(task => (
-              <div key={task.id}>
-                <TaskItem task={task} />
+              <div key={task.id} className="relative flex items-center group">
+                <div className="flex-1 min-w-0">
+                  <TaskItem task={task} />
+                </div>
+                {developerMode && (
+                  <div className="absolute right-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <DeleteButton onClick={() => onDelete(task.id)} isDark={isDark} />
+                  </div>
+                )}
               </div>
             ))}
           </motion.div>
@@ -99,16 +123,19 @@ export default function DoneView() {
   const doneTasks = useTaskStore(s => s.doneTasks())
   const lifetimeCompleted = useTaskStore(s => s.settings.lifetimeCompleted)
   const theme = useTaskStore(s => s.settings.theme)
+  const dailyResetHourUTC = useTaskStore(s => s.settings.dailyResetHourUTC) ?? 10
+  const developerMode = useTaskStore(s => s.settings.developerMode ?? false)
+  const deleteTask = useTaskStore(s => s.deleteTask)
   const isDark = theme === 'dark'
   const [page, setPage] = useState(1)
 
-  // Group tasks by completion date
+  // Group tasks by completion date (using logical day boundary)
   const groupedByDay = useMemo(() => {
     const groups = []
     const map = new Map()
 
     for (const task of doneTasks) {
-      const day = task.completedAt ? task.completedAt.split('T')[0] : 'unknown'
+      const day = task.completedAt ? getLogicalDay(task.completedAt, dailyResetHourUTC) : 'unknown'
       if (!map.has(day)) {
         const entry = { date: day, tasks: [] }
         map.set(day, entry)
@@ -118,7 +145,7 @@ export default function DoneView() {
     }
 
     return groups
-  }, [doneTasks])
+  }, [doneTasks, dailyResetHourUTC])
 
   // Paginate the day groups
   const visibleGroups = groupedByDay.slice(0, page * PAGE_SIZE)
@@ -144,6 +171,9 @@ export default function DoneView() {
             dateStr={group.date}
             tasks={group.tasks}
             isDark={isDark}
+            resetHourUTC={dailyResetHourUTC}
+            developerMode={developerMode}
+            onDelete={deleteTask}
           />
         ))}
 
