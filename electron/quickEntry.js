@@ -1,4 +1,4 @@
-import { BrowserWindow, screen, ipcMain } from 'electron'
+import { BrowserWindow, Tray, screen, ipcMain, nativeImage } from 'electron'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 
@@ -8,9 +8,9 @@ const __dirname = dirname(__filename)
 const WIN_HEIGHT = 90
 const EXPANDED_HEIGHT = 300
 const WIN_WIDTH = 580
-const BOTTOM_MARGIN = 32
 
 let quickEntryWindow = null
+let tray = null
 let webContentsReady = false
 let hiding = false   // debounce guard
 
@@ -26,9 +26,47 @@ function safeSend(channel, ...args) {
 }
 
 /**
- * Get the on-screen position for the quick-entry bar on the active display.
+ * Create a 16x16 template image for the macOS menu bar.
+ * Draws a "+" icon using raw RGBA pixel data.
+ * Marked as template so macOS auto-inverts for dark/light menu bar.
  */
-function getOnScreenBounds(height) {
+function createTrayIcon() {
+  const size = 16
+
+  // Create RGBA buffer — draw a "+" with black pixels on transparent background
+  const buf = Buffer.alloc(size * size * 4, 0) // all transparent
+
+  function setPixel(x, y, a = 255) {
+    if (x < 0 || x >= size || y < 0 || y >= size) return
+    const i = (y * size + x) * 4
+    buf[i] = 0       // R
+    buf[i + 1] = 0   // G
+    buf[i + 2] = 0   // B
+    buf[i + 3] = a   // A
+  }
+
+  // Vertical bar of "+" : x=7,8 from y=3 to y=12
+  for (let y = 3; y <= 12; y++) {
+    setPixel(7, y)
+    setPixel(8, y)
+  }
+  // Horizontal bar of "+" : y=7,8 from x=3 to x=12
+  for (let x = 3; x <= 12; x++) {
+    setPixel(x, 7)
+    setPixel(x, 8)
+  }
+
+  const img = nativeImage.createFromBuffer(buf, { width: size, height: size })
+  img.setTemplateImage(true)
+  return img
+}
+
+const BOTTOM_MARGIN = 32
+
+/**
+ * Get the position for the quick-entry window at the bottom-center of the active display.
+ */
+function getWindowBounds(height) {
   const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
   const { x: dx, y: dy, width: dw, height: dh } = display.workArea
   return {
@@ -42,6 +80,16 @@ function getOnScreenBounds(height) {
 export function createQuickEntryWindow() {
   if (quickEntryWindow && !quickEntryWindow.isDestroyed()) return quickEntryWindow
 
+  // ── Tray icon ─────────────────────────────────────────────
+  if (!tray) {
+    tray = new Tray(createTrayIcon())
+    tray.setToolTip('Focus — Quick Add')
+    tray.on('click', () => {
+      toggleQuickEntry()
+    })
+  }
+
+  // ── Quick-entry window ────────────────────────────────────
   quickEntryWindow = new BrowserWindow({
     width: WIN_WIDTH,
     height: WIN_HEIGHT,
@@ -65,8 +113,7 @@ export function createQuickEntryWindow() {
     },
   })
 
-  // 'floating' is the native macOS NSPanel level — panels can accept key input
-  // without activating the owning application or triggering Space switches.
+  // Panel properties for macOS: float above everything, visible on all Spaces
   quickEntryWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
   quickEntryWindow.setAlwaysOnTop(true, 'floating')
 
@@ -89,7 +136,7 @@ export function createQuickEntryWindow() {
   ipcMain.on('quick-entry:resize', (_e, expanded) => {
     if (!quickEntryWindow || quickEntryWindow.isDestroyed()) return
     if (!quickEntryWindow.isVisible()) return
-    const bounds = getOnScreenBounds(expanded ? EXPANDED_HEIGHT : WIN_HEIGHT)
+    const bounds = getWindowBounds(expanded ? EXPANDED_HEIGHT : WIN_HEIGHT)
     quickEntryWindow.setBounds(bounds)
   })
 
@@ -101,15 +148,13 @@ export function showQuickEntry() {
   if (quickEntryWindow.isVisible()) return
 
   hiding = false
-  const bounds = getOnScreenBounds(WIN_HEIGHT)
+  const bounds = getWindowBounds(WIN_HEIGHT)
   quickEntryWindow.setBounds(bounds)
 
-  // Re-assert panel properties before showing — macOS can lose these after hide/show cycles
+  // Re-assert panel properties before showing
   quickEntryWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
   quickEntryWindow.setAlwaysOnTop(true, 'floating')
 
-  // Use showInactive first to avoid activating the Electron app (which triggers Space switch),
-  // then focus the panel separately so it accepts keyboard input.
   quickEntryWindow.showInactive()
   quickEntryWindow.focus()
   safeSend('quick-entry:focus')
