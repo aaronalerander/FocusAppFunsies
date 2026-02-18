@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, nativeTheme, globalShortcut } from 'electron'
+import { app, BrowserWindow, ipcMain, nativeTheme, globalShortcut, Notification } from 'electron'
 import { fileURLToPath } from 'url'
 import { join, dirname } from 'path'
 import { createRequire } from 'module'
@@ -86,6 +86,9 @@ const SETTING_DEFAULTS = {
   tasksCompletedToday: 0,
   freeXPTaskIds: '[]',         // JSON array of task IDs in bonus round
   pendingDerank: null,          // { fromRankId, toRankId, xpLost } | null — shown on next launch
+
+  // ── Notifications ────────────────────────────────────────────
+  notificationsEnabled: true,  // boolean: send bleed-phase urgency notifications
 
   // ── Bleed system ─────────────────────────────────────────────
   daily_bleed_total: 0,        // float: total XP bled today; resets at daily reset
@@ -477,11 +480,218 @@ function startBleedInterval() {
   }, 60 * 1000)
 }
 
+// ── Bleed Notifications ───────────────────────────────────────
+//
+// Three triggers, max 2 per day, keyed to the bleed phase transitions.
+// All fire within the work day window — nothing after ~10 PM (17h post-reset).
+//
+// With the default 5 AM reset:
+//   Phase 2 entry  (6h after reset  = ~11 AM) — rate tripled, mild nudge
+//   Phase 3 entry  (12h after reset = ~5 PM)  — rate at 8×, urgent
+//   Final warning  (16h after reset = ~9 PM)  — last call before it's too late
+//
+// Each trigger fires once per day at most. State is tracked with today's
+// reset timestamp so it resets automatically when the day rolls over.
+//
+// Copy principles (Clark et al. 2009 / Kahneman prospect theory):
+//   – Lead with endowed progress (streak, total XP) before naming the loss
+//   – Name the specific XP amount at risk — vague threats are ignored
+//   – Escalate tone across the three stages: informational → tense → terse
+//   – No guilt-tripping, no mascots — this app's voice is competitive/RPG
+
+const NOTIF_SENT_KEY = 'notif_sent_today'  // DB key tracking which were sent this reset
+
+function getNotifSentToday(settings) {
+  // notif_sent_today is a JSON object: { phase2: bool, phase3: bool, final: bool, resetAt: string }
+  try {
+    const raw = settings[NOTIF_SENT_KEY]
+    if (!raw) return {}
+    const val = typeof raw === 'string' ? JSON.parse(raw) : raw
+    // If it's from a previous reset cycle, ignore it
+    if (val.resetAt !== settings.progressResetAt) return {}
+    return val
+  } catch { return {} }
+}
+
+function markNotifSent(key, settings) {
+  const current = getNotifSentToday(settings)
+  upsertSettings({
+    [NOTIF_SENT_KEY]: JSON.stringify({
+      ...current,
+      [key]: true,
+      resetAt: settings.progressResetAt,
+    })
+  })
+}
+
+function getRemainingTaskCount() {
+  return db.prepare("SELECT COUNT(*) as n FROM tasks WHERE status = 'today'").get().n
+}
+
+function sendBleedNotification(title, body) {
+  if (!Notification.isSupported()) return
+  const notif = new Notification({ title, body, silent: false })
+  notif.show()
+}
+
+function getNotifCopy(stage, settings) {
+  const streak = settings.streakCount ?? 0
+  const dailyBleed = settings.daily_bleed_total ?? 0
+  const remaining = getRemainingTaskCount()
+  const rank = getRankById(settings.currentRankId ?? 'bronze_4')
+  const cap = rank.penaltyCap
+  const xpStillAtRisk = cap - dailyBleed  // XP left to lose today
+
+  const taskWord = remaining === 1 ? 'task' : 'tasks'
+  const streakStr = streak > 0 ? `${streak}-day streak. ` : ''
+
+  // Pick a random variant each time — Duolingo's bandit research shows
+  // repeated identical copy is the fastest path to banner blindness.
+  const pick = (arr) => arr[Math.floor(Math.random() * arr.length)]
+
+  if (stage === 'phase2') {
+    // Tone: informational / mild urgency — rate just tripled.
+    // Lead with endowed progress, then name the acceleration.
+    return pick([
+      {
+        title: 'XP drain accelerating',
+        body: `${streakStr}${remaining} ${taskWord} left. The bleed rate just tripled — finish before it gets worse.`,
+      },
+      {
+        title: 'The drain just sped up',
+        body: `${remaining} ${taskWord} unfinished. You're now losing XP 3× faster. Don't let it compound.`,
+      },
+      {
+        title: 'Bleed rate: ×3',
+        body: `${streakStr}XP is leaving faster now. ${remaining} ${taskWord} to stop the clock.`,
+      },
+      {
+        title: 'Halfway through the day',
+        body: `${remaining} ${taskWord} still waiting. The drain rate just shifted — now's the time to move.`,
+      },
+    ])
+  }
+
+  if (stage === 'phase3') {
+    // Tone: direct loss frame — 8× rate, specific stake named.
+    return pick([
+      {
+        title: `${xpStillAtRisk} XP at risk`,
+        body: `${remaining} ${taskWord} standing between you and a clean day. Drain rate is at maximum. Finish before reset.`,
+      },
+      {
+        title: 'Maximum bleed',
+        body: `You could still lose ${xpStillAtRisk} XP tonight. ${remaining} ${taskWord} left. The rate won't get worse — but it won't stop either.`,
+      },
+      {
+        title: `${remaining} ${taskWord}. ${xpStillAtRisk} XP draining.`,
+        body: `Drain is running at 8× now. ${streakStr}Finish today and it all stops.`,
+      },
+      {
+        title: 'The bleed is maxed out',
+        body: `${xpStillAtRisk} XP on the line. ${remaining} ${taskWord} to close it out before reset.`,
+      },
+    ])
+  }
+
+  if (stage === 'final') {
+    // Tone: terse — one action, evening deadline, no fluff.
+    // Fires ~9 PM with default reset. "Tonight" is the operative word.
+    return pick([
+      {
+        title: 'Last call tonight',
+        body: `${remaining} ${taskWord}. ${xpStillAtRisk} XP still draining. Finish before you call it a day.`,
+      },
+      {
+        title: `End the day clean`,
+        body: `${remaining} ${taskWord} left. ${xpStillAtRisk} XP at stake. Don't carry this into tomorrow.`,
+      },
+      {
+        title: `${xpStillAtRisk} XP on the line`,
+        body: `${remaining} ${taskWord} to go. Tonight's your last real shot before the drain runs all night.`,
+      },
+      {
+        title: 'Finish strong',
+        body: `${streakStr}${remaining} ${taskWord} unfinished. ${xpStillAtRisk} XP still at risk — close it out tonight.`,
+      },
+    ])
+  }
+
+  return null
+}
+
+let notifCheckIntervalId = null
+
+function startNotificationScheduler() {
+  if (notifCheckIntervalId) clearInterval(notifCheckIntervalId)
+  // Check every minute — same cadence as bleed ticks, negligible overhead
+  notifCheckIntervalId = setInterval(() => {
+    checkAndSendBleedNotifications()
+  }, 60 * 1000)
+}
+
+function checkAndSendBleedNotifications() {
+  const settings = readSettings()
+
+  // Hard guards — never fire if board is cleared, bleed stopped, or user opted out
+  if (!settings.notificationsEnabled) return
+  if (settings.boardClearedToday) return
+  if (settings.bleed_cap_hit_today) return
+  if (!settings.progressResetAt) return
+
+  const remaining = getRemainingTaskCount()
+  if (remaining === 0) return  // all done, nothing to warn about
+
+  const sent = getNotifSentToday(settings)
+  const resetHour = settings.dailyResetHourUTC ?? 10
+  const nowMs = Date.now()
+  const { phase } = getBleedPhase(nowMs, resetHour)
+
+  // ── Phase 2 notification (bleed rate tripled) ──────────────
+  if (phase >= 2 && !sent.phase2) {
+    const copy = getNotifCopy('phase2', settings)
+    if (copy) sendBleedNotification(copy.title, copy.body)
+    markNotifSent('phase2', readSettings())  // re-read to get fresh resetAt
+    return  // only one notif per minute
+  }
+
+  // ── Phase 3 notification (bleed rate 8×) ───────────────────
+  if (phase >= 3 && !sent.phase3) {
+    const copy = getNotifCopy('phase3', settings)
+    if (copy) sendBleedNotification(copy.title, copy.body)
+    markNotifSent('phase3', readSettings())
+    return
+  }
+
+  // ── Final warning (16h after reset ≈ 9 PM with default 5 AM reset) ───
+  // Fires well within the evening crunch window, not in the middle of the night.
+  // Minimum 4h gap from phase 3 notification (12h) ensures no back-to-back.
+  const resetMs = (() => {
+    const now = new Date(nowMs)
+    const utcMins = now.getUTCHours() * 60 + now.getUTCMinutes()
+    const resetMins = resetHour * 60
+    const ms = new Date(Date.UTC(
+      now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(),
+      resetHour, 0, 0, 0
+    ))
+    if (utcMins < resetMins) ms.setUTCDate(ms.getUTCDate() - 1)
+    return ms.getTime()
+  })()
+  const elapsedHours = (nowMs - resetMs) / (1000 * 60 * 60)
+
+  if (elapsedHours >= 16 && !sent.final) {
+    const copy = getNotifCopy('final', settings)
+    if (copy) sendBleedNotification(copy.title, copy.body)
+    markNotifSent('final', readSettings())
+  }
+}
+
 app.whenReady().then(() => {
   createWindow()
   checkDailyReset()
   scheduleDailyResetTimer()
   startBleedInterval()
+  startNotificationScheduler()
 
   // Quick-entry global shortcut (Option+Space)
   createQuickEntryWindow()
@@ -738,8 +948,9 @@ ipcMain.handle('hardReset', () => {
   db.prepare('DELETE FROM tasks').run()
   db.prepare('DELETE FROM settings').run()
   initSettings()
-  // Restart bleed interval with a clean slate
+  // Restart bleed + notification intervals with a clean slate
   startBleedInterval()
+  startNotificationScheduler()
   return { success: true }
 })
 

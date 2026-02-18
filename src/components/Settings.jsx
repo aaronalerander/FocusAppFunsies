@@ -150,6 +150,14 @@ export default function Settings() {
               />
             </SettingRow>
 
+            <SettingRow label="Drain notifications" description="Alerts when XP bleed rate escalates" isDark={isDark}>
+              <Toggle
+                checked={settings.notificationsEnabled ?? true}
+                onChange={(v) => updateSettings({ notificationsEnabled: v })}
+                isDark={isDark}
+              />
+            </SettingRow>
+
             <SettingRow label="Daily reset time" description="When the board resets for a new day" isDark={isDark}>
               <select
                 value={settings.dailyResetHourUTC ?? 10}

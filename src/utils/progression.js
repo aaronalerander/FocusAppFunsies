@@ -226,10 +226,15 @@ const BLEED_BASE_RATE = 1.5  // XP/hour — tunable config constant
  * Determine which bleed phase (1, 2, or 3) the current moment falls in,
  * and return its multiplier.
  *
- * The 24-hour day from the reset boundary is divided into thirds (8h each):
- *   Phase 1: hours  0–8  after reset → multiplier 1x
- *   Phase 2: hours  8–16 after reset → multiplier 3x
- *   Phase 3: hours 16–24 after reset → multiplier 8x
+ * Phases are sized to fit a work day, not equal thirds of 24h.
+ * With the default 5 AM reset this maps to real clock times:
+ *
+ *   Phase 1: hours  0–6  after reset →  5 AM–11 AM  → multiplier 1x  (morning grace period)
+ *   Phase 2: hours  6–12 after reset → 11 AM–5 PM   → multiplier 3x  (afternoon pressure)
+ *   Phase 3: hours 12–17 after reset →  5 PM–10 PM  → multiplier 8x  (evening crunch)
+ *
+ * After 17h (10 PM with default reset) the rate stays at 8× but no new
+ * notifications fire — the work day is over and people are sleeping.
  *
  * @param {number} nowMs - current time as ms since epoch
  * @param {number} resetHourUTC - UTC hour (0-23) of the daily reset
@@ -251,11 +256,10 @@ export function getBleedPhase(nowMs, resetHourUTC) {
   }
 
   const elapsedHours = (nowMs - resetMs.getTime()) / (1000 * 60 * 60)
-  const third = 8  // 24h / 3 phases
 
-  if (elapsedHours < third)       return { phase: 1, multiplier: 1 }
-  if (elapsedHours < third * 2)   return { phase: 2, multiplier: 3 }
-  return                               { phase: 3, multiplier: 8 }
+  if (elapsedHours < 6)   return { phase: 1, multiplier: 1 }  //  0–6h: morning
+  if (elapsedHours < 12)  return { phase: 2, multiplier: 3 }  //  6–12h: afternoon
+  return                         { phase: 3, multiplier: 8 }   // 12h+: evening/night
 }
 
 /**
