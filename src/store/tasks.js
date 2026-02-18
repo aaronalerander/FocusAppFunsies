@@ -36,6 +36,9 @@ const useTaskStore = create((set, get) => ({
     tasksCompletedToday: 0,
     freeXPTaskIds: [],
     pendingDerank: null,
+    dailyBleedTotal: 0,
+    bleedCapHitToday: false,
+    bleedActive: true,
   },
   ui: {
     activeTab: 'today',
@@ -146,6 +149,23 @@ const useTaskStore = create((set, get) => ({
           })
         })
       }
+
+      // Listen for bleed tick events pushed from the main process every 60 seconds.
+      // Updates XP and rank silently — no demotion animation per PRD spec.
+      if (window.focusAPI.onBleedTick) {
+        window.focusAPI.onBleedTick((data) => {
+          set(state => ({
+            progression: {
+              ...state.progression,
+              currentXP: data.newXP,
+              currentRankId: data.newRankId,
+              dailyBleedTotal: data.dailyBleedTotal,
+              bleedCapHitToday: data.capHit,
+              bleedActive: data.bleedActive,
+            }
+          }))
+        })
+      }
     } catch (err) {
       console.error('Failed to initialize Focus store:', err)
       set(state => ({ ui: { ...state.ui, isLoaded: true } }))
@@ -156,13 +176,15 @@ const useTaskStore = create((set, get) => ({
 
   addTask: async (text) => {
     if (!text.trim()) return
-    const { activeTab } = get().ui
     const tasks = get().tasks
-    let targetStatus = activeTab === 'later' ? 'later' : 'today'
+
+    // Always add to Later by default, unless both Later and Today are empty
+    const laterCount = tasks.filter(t => t.status === 'later').length
+    const todayCount = tasks.filter(t => t.status === 'today').length
+    let targetStatus = (laterCount === 0 && todayCount === 0) ? 'today' : 'later'
 
     // Slot limit enforcement for Today
     if (targetStatus === 'today') {
-      const todayCount = tasks.filter(t => t.status === 'today').length
       const maxSlots = get().taskSlots()
       if (todayCount >= maxSlots) {
         targetStatus = 'later'
@@ -266,17 +288,16 @@ const useTaskStore = create((set, get) => ({
 
       get().checkMilestones(newLifetime)
 
-      // Determine confetti mode — priority: allDone > jackpot > normal
+      // Determine confetti mode — allDone beats normal; multiplier tier drives intensity
       const progress = get().todayProgress()
       const isAllDone = progress.allDone && progress.total > 0
-      const isJackpot = newLifetime > 0 && newLifetime % 3 === 0
-      const mode = isAllDone ? 'allDone' : isJackpot ? 'jackpot' : 'normal'
+      const mode = isAllDone ? 'allDone' : 'normal'
 
       // Sound scales with tasks completed today, independent of confetti mode
       if (get().settings.soundEnabled) playCompletionSound(progress.completed, isAllDone)
 
       setTimeout(() => {
-        set(state => ({ ui: { ...state.ui, confetti: { mode, id: Date.now(), isFreeXP: isFreeXPTask } } }))
+        set(state => ({ ui: { ...state.ui, confetti: { mode, id: Date.now(), isFreeXP: isFreeXPTask, multiplierTierId: multiplierRoll.id } } }))
       }, 600)
 
       // ── XP Award ──────────────────────────────────────────────
@@ -379,13 +400,12 @@ const useTaskStore = create((set, get) => ({
 
       const progress = get().todayProgress()
       const isAllDone = progress.allDone && progress.total > 0
-      const isJackpot = fallbackLifetime > 0 && fallbackLifetime % 3 === 0
-      const mode = isAllDone ? 'allDone' : isJackpot ? 'jackpot' : 'normal'
+      const mode = isAllDone ? 'allDone' : 'normal'
 
       if (get().settings.soundEnabled) playCompletionSound(progress.completed, isAllDone)
 
       setTimeout(() => {
-        set(state => ({ ui: { ...state.ui, confetti: { mode, id: Date.now(), isFreeXP: isFreeXPTask } } }))
+        set(state => ({ ui: { ...state.ui, confetti: { mode, id: Date.now(), isFreeXP: isFreeXPTask, multiplierTierId: multiplierRoll.id } } }))
       }, 600)
     }
 
@@ -424,8 +444,9 @@ const useTaskStore = create((set, get) => ({
       }
     }
 
-    // Moving from Today to Later: swap with first Later task (if Later has tasks)
-    if (task.status === 'today' && targetStatus === 'later') {
+    // Moving from Today to Later: swap with first Later task (if Later has tasks, and not in developer mode)
+    const developerMode = get().settings.developerMode ?? false
+    if (!developerMode && task.status === 'today' && targetStatus === 'later') {
       const laterTasks = get().laterTasks()
 
       if (laterTasks.length > 0) {
@@ -621,6 +642,9 @@ const useTaskStore = create((set, get) => ({
         tasksCompletedToday: 0,
         freeXPTaskIds: [],
         pendingDerank: null,
+        dailyBleedTotal: 0,
+        bleedCapHitToday: false,
+        bleedActive: true,
       }
     }))
   },
@@ -652,6 +676,9 @@ const useTaskStore = create((set, get) => ({
         tasksCompletedToday: 0,
         freeXPTaskIds: [],
         pendingDerank: null,
+        dailyBleedTotal: 0,
+        bleedCapHitToday: false,
+        bleedActive: true,
       },
       ui: { ...get().ui, isSettingsOpen: false },
     })

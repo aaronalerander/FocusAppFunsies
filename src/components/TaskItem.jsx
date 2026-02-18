@@ -136,7 +136,7 @@ export default function TaskItem({ task, dragHandleProps }) {
       onMouseLeave={() => setIsHovered(false)}
       onContextMenu={(e) => {
         e.preventDefault()
-        if (developerMode) confirmDelete(task.id)
+        if (developerMode || task.status === 'later') confirmDelete(task.id)
       }}
     >
       {/* Drag handle */}
@@ -307,8 +307,8 @@ export default function TaskItem({ task, dragHandleProps }) {
                 </button>
               )}
 
-              {/* Delete button — only in developer mode */}
-              {developerMode && (
+              {/* Delete button — always for later tasks, only in developer mode for today tasks */}
+              {(task.status === 'later' || developerMode) && (
                 <button
                   onClick={() => confirmDelete(task.id)}
                   title="Delete"

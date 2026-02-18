@@ -41,4 +41,9 @@ contextBridge.exposeInMainWorld('focusAPI', {
     ipcRenderer.on('daily-reset', callback)
     return () => ipcRenderer.removeListener('daily-reset', callback)
   },
+  onBleedTick: (callback) => {
+    const wrapped = (_event, data) => callback(data)
+    ipcRenderer.on('bleed-tick', wrapped)
+    return () => ipcRenderer.removeListener('bleed-tick', wrapped)
+  },
 })

@@ -7,6 +7,23 @@ const STROKE = 5
 const RADIUS = (SIZE - STROKE) / 2
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS
 
+function LockIcon({ color }) {
+  return (
+    <svg
+      width="10"
+      height="12"
+      viewBox="0 0 10 12"
+      fill="none"
+      style={{ position: 'absolute', bottom: 4, right: 4 }}
+    >
+      <rect x="1" y="5" width="8" height="7" rx="1.5"
+        stroke={color} strokeWidth="1.5" />
+      <path d="M3 5V3.5a2 2 0 014 0V5"
+        stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  )
+}
+
 export default function RankDisplay() {
   const progression = useTaskStore(s => s.progression)
   const theme = useTaskStore(s => s.settings.theme)
@@ -18,6 +35,10 @@ export default function RankDisplay() {
   const trackColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'
 
   const offset = CIRCUMFERENCE - (progress.percentage / 100) * CIRCUMFERENCE
+
+  // Show cap-hit lock only when bleed hit the cap but board is NOT yet cleared (not free XP mode)
+  const showCapLock = progression.bleedCapHitToday && !progression.boardClearedToday
+  const lockColor = isDark ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.30)'
 
   return (
     <div className="relative" style={{ width: SIZE, height: SIZE }}>
@@ -65,6 +86,9 @@ export default function RankDisplay() {
           {progress.current.toLocaleString()}/{progress.needed.toLocaleString()}
         </span>
       </div>
+
+      {/* Cap-hit lock — appears when daily bleed cap is reached (not in free XP mode) */}
+      {showCapLock && <LockIcon color={lockColor} />}
     </div>
   )
 }

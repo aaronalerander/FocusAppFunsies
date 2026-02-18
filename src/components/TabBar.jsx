@@ -1,12 +1,11 @@
 import { motion } from 'framer-motion'
 import useTaskStore from '@/store/tasks'
-import { getResetTimestamp } from '@/utils/dateUtils'
 
 const GOLD = '#FFD700'
 
 const tabs = [
+  { id: 'later', label: 'up next' },
   { id: 'today', label: 'today' },
-  { id: 'later', label: 'later' },
   { id: 'done', label: 'done' }
 ]
 
@@ -18,6 +17,7 @@ export default function TabBar() {
   const tasks = useTaskStore(s => s.tasks)
   const boardClearedToday = useTaskStore(s => s.progression.boardClearedToday)
   const dailyResetHourUTC = useTaskStore(s => s.settings.dailyResetHourUTC) ?? 10
+  const lifetimeCompleted = useTaskStore(s => s.settings.lifetimeCompleted) ?? 0
 
   const isDark = theme === 'dark'
   const accentColor = boardClearedToday ? GOLD : null
@@ -26,8 +26,7 @@ export default function TabBar() {
     if (tabId === 'today') return tasks.filter(t => t.status === 'today').length
     if (tabId === 'later') return tasks.filter(t => t.status === 'later').length
     if (tabId === 'done') {
-      const resetBoundary = getResetTimestamp(dailyResetHourUTC)
-      return tasks.filter(t => t.status === 'done' && t.completedAt > resetBoundary).length
+      return lifetimeCompleted
     }
     return 0
   }

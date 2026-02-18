@@ -19,7 +19,7 @@ export default function TaskInput() {
   const isToday = activeTab !== 'later' && activeTab !== 'done'
   const todayCount = isToday ? tasks.filter(t => t.status === 'today').length : 0
   const isFull = isToday && todayCount >= taskSlots
-  const placeholder = activeTab === 'later' ? 'Park this for later...' : 'What needs to happen today?'
+  const placeholder = activeTab === 'later' ? 'Add to up next...' : 'What needs to happen today?'
 
   // Auto-focus input when user starts typing anywhere in the app
   useEffect(() => {

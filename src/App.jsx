@@ -13,7 +13,7 @@ import XPSummary from '@/components/XPSummary'
 import RankUpAnimation from '@/components/RankUpAnimation'
 import SlotMachine from '@/components/SlotMachine'
 
-const tabOrder = ['today', 'later', 'done']
+const tabOrder = ['later', 'today', 'done']
 
 export default function App() {
   const initialize = useTaskStore(s => s.initialize)
@@ -78,10 +78,10 @@ export default function App() {
           {activeTab === 'today' && (
             <motion.div
               key="today"
-              custom={0 - currentTabIndex}
-              initial={{ opacity: 0, x: -20 }}
+              custom={1 - currentTabIndex}
+              initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
+              exit={{ opacity: 0, x: 20 }}
               transition={{ type: 'spring', stiffness: 300, damping: 30 }}
               className="absolute inset-0"
             >
@@ -91,10 +91,10 @@ export default function App() {
           {activeTab === 'later' && (
             <motion.div
               key="later"
-              custom={1 - currentTabIndex}
-              initial={{ opacity: 0, x: 20 }}
+              custom={0 - currentTabIndex}
+              initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 20 }}
+              exit={{ opacity: 0, x: -20 }}
               transition={{ type: 'spring', stiffness: 300, damping: 30 }}
               className="absolute inset-0"
             >

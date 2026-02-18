@@ -12,9 +12,9 @@ function EmptyState({ isDark }) {
       className="flex flex-col items-center justify-center py-16 px-6"
     >
       <p className={`text-sm font-sans text-center ${isDark ? 'text-muted-dark' : 'text-muted-light'} opacity-50`}>
-        The holding pen is empty.
+        Nothing up next.
         <br />
-        Park tasks here for later.
+        Park tasks here to tackle later.
       </p>
     </motion.div>
   )

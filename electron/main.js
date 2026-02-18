@@ -3,7 +3,13 @@ import { fileURLToPath } from 'url'
 import { join, dirname } from 'path'
 import { createRequire } from 'module'
 import { existsSync, readFileSync } from 'fs'
-import { getRankForXP, calculateDailyPenalty } from '../src/utils/progression.js'
+import {
+  getRankForXP,
+  getRankById,
+  getBleedPhase,
+  calculateBleedTick,
+  calculateCatchUpBleed,
+} from '../src/utils/progression.js'
 import { getLogicalToday, getResetTimestamp } from '../src/utils/dateUtils.js'
 
 const require = createRequire(import.meta.url)
@@ -70,7 +76,14 @@ const SETTING_DEFAULTS = {
   boardClearedToday: false,
   tasksCompletedToday: 0,
   freeXPTaskIds: '[]',         // JSON array of task IDs in bonus round
-  pendingDerank: null           // { fromRankId, toRankId, xpLost } | null — shown on next launch
+  pendingDerank: null,          // { fromRankId, toRankId, xpLost } | null — shown on next launch
+
+  // ── Bleed system ─────────────────────────────────────────────
+  daily_bleed_total: 0,        // float: total XP bled today; resets at daily reset
+  bleed_xp_fraction: 0,        // float: sub-1 fractional XP carry-over between ticks
+  bleed_cap_hit_today: false,  // boolean: daily cap has been reached
+  bleed_active: true,          // boolean: false once board is cleared or cap is hit
+  last_bleed_applied_at: null, // ISO timestamp: when the last bleed tick was applied
 }
 
 function initSettings() {
@@ -194,34 +207,15 @@ function checkDailyReset() {
   if (resetAt !== resetTime) {
     didReset = true
 
-    // ── Progression: XP penalty & streak logic ────────────────────
+    // ── Progression: streak & bleed reset logic ──────────────────
     const boardCleared = settings.boardClearedToday || false
     const todayTaskCount = db.prepare("SELECT COUNT(*) as n FROM tasks WHERE status = 'today'").get().n
-    const currentXP = settings.currentXP || 0
-    const currentRankId = settings.currentRankId || 'bronze_4'
-    const streakCount = settings.streakCount || 0
-    const streakLastDate = settings.streakLastDate || null
-    const yesterday = getYesterday(today)
 
     const progressionUpdates = {}
 
-    if (!boardCleared && todayTaskCount > 0) {
-      // Board was NOT cleared and there are uncompleted today-tasks → penalty
-      const penalty = calculateDailyPenalty(todayTaskCount, currentRankId)
-      const newXP = Math.max(0, currentXP - penalty)
-      const newRank = getRankForXP(newXP)
-
-      progressionUpdates.currentXP = newXP
-      progressionUpdates.currentRankId = newRank.id
-
-      if (newRank.id !== currentRankId) {
-        progressionUpdates.pendingDerank = { fromRankId: currentRankId, toRankId: newRank.id, xpLost: penalty }
-      }
-    }
-
-    // Streak: if board was cleared and streakLastDate was yesterday or today, streak holds.
-    // If board was NOT cleared on a day with tasks, break streak.
-    // Zero-task days are neutral — don't break streak.
+    // Bleed replaces the end-of-day cliff penalty — no lump-sum deduction at reset.
+    // Streak: zero-task days are neutral. Board-cleared days already updated streak via
+    // the progression:boardCleared handler. If board was NOT cleared on a task day, break streak.
     if (!boardCleared && todayTaskCount > 0) {
       progressionUpdates.streakCount = 0
     }
@@ -247,6 +241,13 @@ function checkDailyReset() {
     progressionUpdates.boardClearedToday = false
     progressionUpdates.tasksCompletedToday = 0
     progressionUpdates.freeXPTaskIds = '[]'
+
+    // Reset bleed state for the new day — bleed starts fresh from the reset boundary
+    progressionUpdates.daily_bleed_total = 0
+    progressionUpdates.bleed_xp_fraction = 0
+    progressionUpdates.bleed_cap_hit_today = false
+    progressionUpdates.bleed_active = true
+    progressionUpdates.last_bleed_applied_at = resetTime
 
     upsertSettings({ progressResetAt: resetTime, ...progressionUpdates })
   }
@@ -298,15 +299,180 @@ function scheduleDailyResetTimer() {
   }, msUntilReset)
 }
 
+// ── Bleed Engine ──────────────────────────────────────────────
+
+/**
+ * Count Today tasks eligible for bleed contribution.
+ * Excludes freeXPTaskIds (bonus round tasks) — they never bleed per PRD.
+ * Later tasks are naturally excluded because they have status='later'.
+ */
+function getBleedEligibleTaskCount(settings) {
+  const todayTasks = db.prepare("SELECT id FROM tasks WHERE status = 'today'").all()
+  const freeXPIds = new Set(JSON.parse(settings.freeXPTaskIds ?? '[]'))
+  return todayTasks.filter(t => !freeXPIds.has(t.id)).length
+}
+
+/**
+ * Apply one minute of XP bleed.
+ * Returns a payload to push to the renderer, or null if nothing changed.
+ */
+function applyBleedTick() {
+  const settings = readSettings()
+
+  if (settings.boardClearedToday) return null
+  if (settings.bleed_cap_hit_today) return null
+  if (!settings.last_bleed_applied_at) return null
+
+  const eligibleCount = getBleedEligibleTaskCount(settings)
+  if (eligibleCount <= 0) return null
+
+  const resetHour = settings.dailyResetHourUTC ?? 10
+  const nowMs = Date.now()
+  const { multiplier } = getBleedPhase(nowMs, resetHour)
+
+  const currentFraction = settings.bleed_xp_fraction ?? 0
+  const newFraction = currentFraction + calculateBleedTick(eligibleCount, multiplier)
+  const wholeXP = Math.floor(newFraction)
+  const remainderFraction = newFraction - wholeXP
+
+  if (wholeXP === 0) {
+    // Only fraction changed — update silently without pushing to renderer
+    upsertSettings({
+      bleed_xp_fraction: remainderFraction,
+      last_bleed_applied_at: new Date(nowMs).toISOString(),
+    })
+    return null
+  }
+
+  // Enforce daily cap
+  const dailyBleedSoFar = settings.daily_bleed_total ?? 0
+  const currentRankId = settings.currentRankId ?? 'bronze_4'
+  const rank = getRankById(currentRankId)
+  const cap = rank.penaltyCap
+  const remainingCapacity = cap - dailyBleedSoFar
+  const actualXP = Math.min(wholeXP, remainingCapacity)
+  const capHit = dailyBleedSoFar + actualXP >= cap
+
+  const oldXP = settings.currentXP ?? 0
+  const oldRankId = currentRankId
+  const newXP = Math.max(0, oldXP - actualXP)
+  const newRank = getRankForXP(newXP)
+  const newDailyBleed = dailyBleedSoFar + actualXP
+
+  upsertSettings({
+    currentXP: newXP,
+    currentRankId: newRank.id,
+    daily_bleed_total: newDailyBleed,
+    bleed_xp_fraction: capHit ? 0 : remainderFraction,
+    bleed_cap_hit_today: capHit,
+    bleed_active: !capHit,
+    last_bleed_applied_at: new Date(nowMs).toISOString(),
+  })
+
+  return {
+    newXP,
+    newRankId: newRank.id,
+    deranked: newRank.id !== oldRankId,
+    previousRankId: oldRankId,
+    capHit,
+    dailyBleedTotal: newDailyBleed,
+    bleedActive: !capHit,
+  }
+}
+
+/**
+ * Compute and apply all bleed ticks missed while the app was backgrounded or quit.
+ * Called on app.on('activate') after checkDailyReset().
+ */
+function applyCatchUpBleed() {
+  const settings = readSettings()
+
+  if (settings.boardClearedToday) return null
+  if (settings.bleed_cap_hit_today) return null
+  if (!settings.last_bleed_applied_at) return null
+
+  const eligibleCount = getBleedEligibleTaskCount(settings)
+  if (eligibleCount <= 0) return null
+
+  const lastApplied = new Date(settings.last_bleed_applied_at).getTime()
+  const nowMs = Date.now()
+  const minutesElapsed = Math.floor((nowMs - lastApplied) / (60 * 1000))
+
+  if (minutesElapsed < 1) return null
+
+  const resetHour = settings.dailyResetHourUTC ?? 10
+  const currentRankId = settings.currentRankId ?? 'bronze_4'
+  const rank = getRankById(currentRankId)
+  const dailyBleedSoFar = settings.daily_bleed_total ?? 0
+
+  const { totalXP, newDailyBleedTotal, capHit } = calculateCatchUpBleed(
+    minutesElapsed,
+    lastApplied + 60 * 1000,  // first missed tick starts 1 minute after last applied
+    resetHour,
+    eligibleCount,
+    dailyBleedSoFar,
+    rank.penaltyCap
+  )
+
+  // Always update the timestamp, even if no whole XP changed
+  if (totalXP === 0) {
+    upsertSettings({ last_bleed_applied_at: new Date(nowMs).toISOString() })
+    return null
+  }
+
+  const oldXP = settings.currentXP ?? 0
+  const oldRankId = currentRankId
+  const newXP = Math.max(0, oldXP - totalXP)
+  const newRank = getRankForXP(newXP)
+
+  upsertSettings({
+    currentXP: newXP,
+    currentRankId: newRank.id,
+    daily_bleed_total: newDailyBleedTotal,
+    bleed_xp_fraction: 0,  // fraction is discarded in catch-up; whole XP only
+    bleed_cap_hit_today: capHit,
+    bleed_active: !capHit,
+    last_bleed_applied_at: new Date(nowMs).toISOString(),
+  })
+
+  return {
+    newXP,
+    newRankId: newRank.id,
+    deranked: newRank.id !== oldRankId,
+    previousRankId: oldRankId,
+    capHit,
+    dailyBleedTotal: newDailyBleedTotal,
+    bleedActive: !capHit,
+  }
+}
+
+let bleedIntervalId = null
+
+function startBleedInterval() {
+  if (bleedIntervalId) clearInterval(bleedIntervalId)
+  bleedIntervalId = setInterval(() => {
+    const result = applyBleedTick()
+    if (result && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('bleed-tick', result)
+    }
+  }, 60 * 1000)
+}
+
 app.whenReady().then(() => {
   createWindow()
   checkDailyReset()
   scheduleDailyResetTimer()
+  startBleedInterval()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
     // Re-check reset when app is re-activated (e.g. after sleeping overnight)
     checkDailyReset()
+    // Apply any bleed that accumulated while backgrounded or during system sleep
+    const catchUpResult = applyCatchUpBleed()
+    if (catchUpResult && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('bleed-tick', catchUpResult)
+    }
   })
 })
 
@@ -415,15 +581,20 @@ ipcMain.handle('tags:all', () => {
 
 ipcMain.handle('progression:read', () => {
   const settings = readSettings()
+  const boardCleared = settings.boardClearedToday ?? false
+  const capHit = settings.bleed_cap_hit_today ?? false
   return {
     currentXP: settings.currentXP ?? 0,
     currentRankId: settings.currentRankId ?? 'bronze_4',
     streakCount: settings.streakCount ?? 0,
     streakLastDate: settings.streakLastDate ?? null,
-    boardClearedToday: settings.boardClearedToday ?? false,
+    boardClearedToday: boardCleared,
     tasksCompletedToday: settings.tasksCompletedToday ?? 0,
     freeXPTaskIds: JSON.parse(settings.freeXPTaskIds ?? '[]'),
     pendingDerank: settings.pendingDerank ?? null,
+    dailyBleedTotal: settings.daily_bleed_total ?? 0,
+    bleedCapHitToday: capHit,
+    bleedActive: !boardCleared && !capHit,
   }
 })
 
@@ -466,6 +637,7 @@ ipcMain.handle('progression:boardCleared', () => {
     boardClearedToday: true,
     streakCount: newStreak,
     streakLastDate: today,
+    bleed_active: false,  // board cleared — bleed stops immediately
   }
   upsertSettings(updates)
 
@@ -501,6 +673,11 @@ ipcMain.handle('progression:reset', () => {
     tasksCompletedToday: 0,
     freeXPTaskIds: '[]',
     pendingDerank: null,
+    daily_bleed_total: 0,
+    bleed_xp_fraction: 0,
+    bleed_cap_hit_today: false,
+    bleed_active: true,
+    last_bleed_applied_at: null,
   })
   return { success: true }
 })
@@ -529,5 +706,7 @@ ipcMain.handle('hardReset', () => {
   db.prepare('DELETE FROM tasks').run()
   db.prepare('DELETE FROM settings').run()
   initSettings()
+  // Restart bleed interval with a clean slate
+  startBleedInterval()
   return { success: true }
 })

@@ -217,3 +217,107 @@ export function calculateTaskXPWithMultiplier(tasksCompletedToday, streakMultipl
   const ramp = Math.min(1 + (tasksCompletedToday * 0.15), 3.0)
   return Math.round(BASE_XP * ramp * streakMultiplier * hiddenMultiplierValue)
 }
+
+// ── Hourly XP Bleed Utilities ────────────────────────────────────────────────
+
+const BLEED_BASE_RATE = 1.5  // XP/hour — tunable config constant
+
+/**
+ * Determine which bleed phase (1, 2, or 3) the current moment falls in,
+ * and return its multiplier.
+ *
+ * The 24-hour day from the reset boundary is divided into thirds (8h each):
+ *   Phase 1: hours  0–8  after reset → multiplier 1x
+ *   Phase 2: hours  8–16 after reset → multiplier 3x
+ *   Phase 3: hours 16–24 after reset → multiplier 8x
+ *
+ * @param {number} nowMs - current time as ms since epoch
+ * @param {number} resetHourUTC - UTC hour (0-23) of the daily reset
+ * @returns {{ phase: 1|2|3, multiplier: number }}
+ */
+export function getBleedPhase(nowMs, resetHourUTC) {
+  const now = new Date(nowMs)
+  const utcTotalMinutes = now.getUTCHours() * 60 + now.getUTCMinutes()
+  const resetMinutesUTC = resetHourUTC * 60
+
+  // Build ms for the most recent reset boundary
+  const resetMs = new Date(Date.UTC(
+    now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(),
+    resetHourUTC, 0, 0, 0
+  ))
+  if (utcTotalMinutes < resetMinutesUTC) {
+    // Before today's reset hour — last reset was yesterday
+    resetMs.setUTCDate(resetMs.getUTCDate() - 1)
+  }
+
+  const elapsedHours = (nowMs - resetMs.getTime()) / (1000 * 60 * 60)
+  const third = 8  // 24h / 3 phases
+
+  if (elapsedHours < third)       return { phase: 1, multiplier: 1 }
+  if (elapsedHours < third * 2)   return { phase: 2, multiplier: 3 }
+  return                               { phase: 3, multiplier: 8 }
+}
+
+/**
+ * Calculate XP bleed for one minute (float, may be < 1).
+ * Formula: hourly_bleed = BLEED_BASE_RATE × phaseMultiplier × (tasksRemaining ^ 1.25)
+ * Per-minute = hourly / 60
+ *
+ * The caller accumulates the fraction and applies only whole-number XP.
+ *
+ * @param {number} tasksRemaining - count of bleed-eligible Today tasks
+ * @param {number} phaseMultiplier - 1, 3, or 8
+ * @returns {number} fractional XP to bleed this minute
+ */
+export function calculateBleedTick(tasksRemaining, phaseMultiplier) {
+  if (tasksRemaining <= 0) return 0
+  const hourlyBleed = BLEED_BASE_RATE * phaseMultiplier * Math.pow(tasksRemaining, 1.25)
+  return hourlyBleed / 60
+}
+
+/**
+ * Compute total XP bled across multiple minutes (for catch-up after app is backgrounded).
+ * Each minute's phase is computed individually so phase transitions mid-window are correct.
+ *
+ * @param {number} minutesElapsed - how many missed minutes to compute
+ * @param {number} startMs - epoch ms of the first missed tick (lastApplied + 60s)
+ * @param {number} resetHourUTC - UTC hour of daily reset
+ * @param {number} tasksRemaining - count of bleed-eligible tasks (held constant during catch-up)
+ * @param {number} dailyBleedSoFar - XP already bled today before this window
+ * @param {number} dailyBleedCap - max XP that can be bled today (rank.penaltyCap)
+ * @returns {{ totalXP: number, newDailyBleedTotal: number, capHit: boolean }}
+ */
+export function calculateCatchUpBleed(
+  minutesElapsed, startMs, resetHourUTC,
+  tasksRemaining, dailyBleedSoFar, dailyBleedCap
+) {
+  let accumulated = 0
+  let fraction = 0
+
+  for (let i = 0; i < minutesElapsed; i++) {
+    const tickMs = startMs + i * 60 * 1000
+    const { multiplier } = getBleedPhase(tickMs, resetHourUTC)
+    fraction += calculateBleedTick(tasksRemaining, multiplier)
+
+    if (fraction >= 1) {
+      const whole = Math.floor(fraction)
+      accumulated += whole
+      fraction -= whole
+    }
+
+    // Stop accumulating if cap would be hit
+    if (dailyBleedSoFar + accumulated >= dailyBleedCap) {
+      return {
+        totalXP: dailyBleedCap - dailyBleedSoFar,
+        newDailyBleedTotal: dailyBleedCap,
+        capHit: true
+      }
+    }
+  }
+
+  return {
+    totalXP: accumulated,
+    newDailyBleedTotal: dailyBleedSoFar + accumulated,
+    capHit: false
+  }
+}
