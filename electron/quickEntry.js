@@ -5,8 +5,8 @@ import { fileURLToPath } from 'url'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 
-const WIN_HEIGHT = 72
-const EXPANDED_HEIGHT = 280
+const WIN_HEIGHT = 90
+const EXPANDED_HEIGHT = 300
 const WIN_WIDTH = 580
 const BOTTOM_MARGIN = 32
 
@@ -103,7 +103,14 @@ export function showQuickEntry() {
   hiding = false
   const bounds = getOnScreenBounds(WIN_HEIGHT)
   quickEntryWindow.setBounds(bounds)
-  quickEntryWindow.show()
+
+  // Re-assert panel properties before showing — macOS can lose these after hide/show cycles
+  quickEntryWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+  quickEntryWindow.setAlwaysOnTop(true, 'floating')
+
+  // Use showInactive first to avoid activating the Electron app (which triggers Space switch),
+  // then focus the panel separately so it accepts keyboard input.
+  quickEntryWindow.showInactive()
   quickEntryWindow.focus()
   safeSend('quick-entry:focus')
 }

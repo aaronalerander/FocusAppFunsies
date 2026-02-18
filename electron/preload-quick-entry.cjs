@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld('quickEntryAPI', {
   addTask: (text, tag) => ipcRenderer.invoke('quick-entry:addTask', { text, tag }),
   hide: () => ipcRenderer.send('quick-entry:hide'),
   resize: (expanded) => ipcRenderer.send('quick-entry:resize', expanded),
+  getStats: () => ipcRenderer.invoke('quick-entry:stats'),
   tags: {
     getAll: () => ipcRenderer.invoke('tags:all'),
   },

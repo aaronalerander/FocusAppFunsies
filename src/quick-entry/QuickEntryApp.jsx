@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { getTagColor } from '../utils/tagColors'
+import { RANK_COLORS } from '../utils/progression'
 
 export default function QuickEntryApp() {
   const [value, setValue] = useState('')
@@ -8,14 +9,18 @@ export default function QuickEntryApp() {
   const [existingTags, setExistingTags] = useState([])
   const [tagFilter, setTagFilter] = useState('')
   const [activeTagIdx, setActiveTagIdx] = useState(-1)
+  const [stats, setStats] = useState(null)
   const inputRef = useRef(null)
   const tagInputRef = useRef(null)
 
-  // Load existing tags
+  // Load existing tags and stats
   useEffect(() => {
     window.quickEntryAPI.tags.getAll()
       .then(tags => setExistingTags(tags || []))
       .catch(() => setExistingTags([]))
+    window.quickEntryAPI.getStats()
+      .then(s => setStats(s))
+      .catch(() => {})
   }, [])
 
   // Global Escape key listener
@@ -47,6 +52,9 @@ export default function QuickEntryApp() {
       inputRef.current?.focus()
       window.quickEntryAPI.tags.getAll()
         .then(tags => setExistingTags(tags || []))
+        .catch(() => {})
+      window.quickEntryAPI.getStats()
+        .then(s => setStats(s))
         .catch(() => {})
     })
   }, [])
@@ -150,6 +158,8 @@ export default function QuickEntryApp() {
 
   const selectedColor = tag ? getTagColor(tag) : null
 
+  const tierColor = stats ? (RANK_COLORS[stats.rankTier]?.primary || '#888') : '#888'
+
   return (
     <div className="w-full h-full flex flex-col justify-end items-center pb-2">
       {/* Tag picker dropdown (above the bar) */}
@@ -207,66 +217,121 @@ export default function QuickEntryApp() {
         </div>
       )}
 
-      {/* Floating bar — Spotlight-style */}
+      {/* Combined floating bar + status strip */}
       <div
-        className="flex items-center gap-3 px-4 py-3 rounded-2xl"
+        className="overflow-hidden rounded-2xl"
         style={{
           width: WIN_WIDTH - 16,
-          background: 'rgba(30, 30, 30, 0.95)',
-          backdropFilter: 'blur(20px)',
-          WebkitBackdropFilter: 'blur(20px)',
           boxShadow: '0 8px 32px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.3), 0 0 0 0.5px rgba(255,255,255,0.1)',
         }}
       >
-        <svg
-          width="14"
-          height="14"
-          viewBox="0 0 14 14"
-          fill="none"
-          className="flex-shrink-0"
-          style={{ color: '#666' }}
+        {/* Main input bar */}
+        <div
+          className="flex items-center gap-3 px-4 py-3"
+          style={{
+            background: 'rgba(30, 30, 30, 0.95)',
+            backdropFilter: 'blur(20px)',
+            WebkitBackdropFilter: 'blur(20px)',
+          }}
         >
-          <path
-            d="M7 1v12M1 7h12"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 14 14"
+            fill="none"
+            className="flex-shrink-0"
+            style={{ color: '#666' }}
+          >
+            <path
+              d="M7 1v12M1 7h12"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+            />
+          </svg>
+          <input
+            ref={inputRef}
+            type="text"
+            value={value}
+            onChange={e => setValue(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Quick add task..."
+            autoFocus
+            className="flex-1 bg-transparent text-sm font-sans outline-none"
+            style={{ color: '#e0e0e0', caretColor: '#e0e0e0' }}
           />
-        </svg>
-        <input
-          ref={inputRef}
-          type="text"
-          value={value}
-          onChange={e => setValue(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Quick add task..."
-          autoFocus
-          className="flex-1 bg-transparent text-sm font-sans outline-none"
-          style={{ color: '#e0e0e0', caretColor: '#e0e0e0' }}
-        />
 
-        {/* Tag pill or hint */}
-        {tag ? (
-          <span
-            onClick={openTagPicker}
-            className="px-2 py-0.5 rounded text-[11px] font-sans font-medium cursor-pointer whitespace-nowrap flex-shrink-0"
-            style={{ background: selectedColor.bg, color: selectedColor.text }}
-          >
-            {tag}
-          </span>
-        ) : (
-          <span
-            onClick={openTagPicker}
-            className="text-[11px] font-sans cursor-pointer whitespace-nowrap flex-shrink-0"
-            style={{ color: '#555' }}
-          >
-            tab for tag
-          </span>
-        )}
+          {/* Tag pill or hint */}
+          {tag ? (
+            <span
+              onClick={openTagPicker}
+              className="px-2 py-0.5 rounded text-[11px] font-sans font-medium cursor-pointer whitespace-nowrap flex-shrink-0"
+              style={{ background: selectedColor.bg, color: selectedColor.text }}
+            >
+              {tag}
+            </span>
+          ) : (
+            <span
+              onClick={openTagPicker}
+              className="text-[11px] font-sans cursor-pointer whitespace-nowrap flex-shrink-0"
+              style={{ color: '#555' }}
+            >
+              tab for tag
+            </span>
+          )}
 
-        {value && (
-          <span className="text-xs font-sans" style={{ color: '#555' }}>↵</span>
-        )}
+          {value && (
+            <span className="text-xs font-sans" style={{ color: '#555' }}>↵</span>
+          )}
+        </div>
+
+        {/* Status strip — darker section behind/below the bar */}
+        <div
+          className="flex items-center justify-between px-4 py-1.5"
+          style={{
+            background: 'rgba(18, 18, 18, 0.95)',
+            backdropFilter: 'blur(20px)',
+            WebkitBackdropFilter: 'blur(20px)',
+          }}
+        >
+          {/* Left: today's task progress */}
+          <div className="flex items-center gap-1.5">
+            <svg
+              width="10"
+              height="10"
+              viewBox="0 0 10 10"
+              fill="none"
+              style={{ color: '#555' }}
+            >
+              <circle cx="5" cy="5" r="4" stroke="currentColor" strokeWidth="1.2" />
+              {stats && stats.total > 0 && (
+                <circle
+                  cx="5"
+                  cy="5"
+                  r="4"
+                  stroke={stats.completed === stats.total ? '#4ade80' : '#888'}
+                  strokeWidth="1.2"
+                  strokeDasharray={`${(stats.completed / stats.total) * 25.13} 25.13`}
+                  strokeLinecap="round"
+                  style={{ transform: 'rotate(-90deg)', transformOrigin: '50% 50%' }}
+                />
+              )}
+            </svg>
+            <span className="text-[10px] font-sans" style={{ color: '#666' }}>
+              {stats ? `${stats.completed}/${stats.total} today` : '–'}
+            </span>
+          </div>
+
+          {/* Right: current rank */}
+          <div className="flex items-center gap-1.5">
+            <span
+              className="text-[10px] font-sans font-medium"
+              style={{ color: tierColor }}
+            >
+              {stats ? stats.rankName : '–'}
+            </span>
+          </div>
+        </div>
       </div>
     </div>
   )

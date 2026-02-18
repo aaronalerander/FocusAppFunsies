@@ -766,3 +766,29 @@ ipcMain.handle('quick-entry:addTask', (_e, { text, tag }) => {
 ipcMain.on('quick-entry:hide', () => {
   hideQuickEntry()
 })
+
+ipcMain.handle('quick-entry:stats', () => {
+  const settings = readSettings()
+  const resetHour = settings.dailyResetHourUTC ?? 10
+  const resetBoundary = getResetTimestamp(resetHour)
+
+  // Count today tasks + tasks completed after today's reset
+  const allTasks = db.prepare('SELECT * FROM tasks ORDER BY "order" ASC').all()
+  const todayTasks = allTasks.filter(t => {
+    if (t.status === 'today') return true
+    if (t.status === 'done' && t.completedAt && t.completedAt > resetBoundary) return true
+    return false
+  })
+  const completed = todayTasks.filter(t => t.status === 'done').length
+  const total = todayTasks.length
+
+  const currentRankId = settings.currentRankId ?? 'bronze_4'
+  const rank = getRankById(currentRankId)
+
+  return {
+    completed,
+    total,
+    rankName: rank.name,
+    rankTier: rank.tier,
+  }
+})
