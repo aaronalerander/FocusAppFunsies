@@ -10,6 +10,7 @@ export default function QuickEntryApp() {
   const [tagFilter, setTagFilter] = useState('')
   const [activeTagIdx, setActiveTagIdx] = useState(-1)
   const [stats, setStats] = useState(null)
+  const [committing, setCommitting] = useState(false) // confirmation animation state
   const inputRef = useRef(null)
   const tagInputRef = useRef(null)
 
@@ -89,10 +90,16 @@ export default function QuickEntryApp() {
 
   const submit = useCallback(async () => {
     if (!value.trim()) return
-    await window.quickEntryAPI.addTask(value.trim(), tag)
-    setValue('')
-    setTag(null)
-    window.quickEntryAPI.hide()
+    // Fire the add immediately — don't wait on animation
+    window.quickEntryAPI.addTask(value.trim(), tag)
+    // Play confirmation animation, then hide after it completes
+    setCommitting(true)
+    setTimeout(() => {
+      setValue('')
+      setTag(null)
+      setCommitting(false)
+      window.quickEntryAPI.hide()
+    }, 420)
   }, [value, tag])
 
   const handleKeyDown = (e) => {
@@ -161,7 +168,10 @@ export default function QuickEntryApp() {
   const tierColor = stats ? (RANK_COLORS[stats.rankTier]?.primary || '#888') : '#888'
 
   return (
-    <div className="w-full h-full flex flex-col justify-end items-center pb-2">
+    <div
+      className={`w-full h-full flex flex-col justify-end items-center pb-2${committing ? ' qe-committing' : ''}`}
+      style={{ '--qe-rank-color': tierColor }}
+    >
       {/* Tag picker dropdown (above the bar) */}
       {showTagPicker && (
         <div
@@ -219,7 +229,7 @@ export default function QuickEntryApp() {
 
       {/* Combined floating bar + status strip */}
       <div
-        className="overflow-hidden rounded-2xl"
+        className="qe-bar-shell overflow-hidden rounded-2xl"
         style={{
           width: WIN_WIDTH - 16,
           boxShadow: '0 8px 32px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.3), 0 0 0 0.5px rgba(255,255,255,0.1)',
@@ -234,21 +244,41 @@ export default function QuickEntryApp() {
             WebkitBackdropFilter: 'blur(20px)',
           }}
         >
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 14 14"
-            fill="none"
-            className="flex-shrink-0"
-            style={{ color: '#666' }}
-          >
-            <path
-              d="M7 1v12M1 7h12"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-            />
-          </svg>
+          {/* Icon: "+" normally, checkmark on commit */}
+          <div className="flex-shrink-0 relative" style={{ width: 14, height: 14 }}>
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 14 14"
+              fill="none"
+              className="qe-icon-plus absolute inset-0"
+              style={{ color: '#666' }}
+            >
+              <path
+                d="M7 1v12M1 7h12"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              />
+            </svg>
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 14 14"
+              fill="none"
+              className="qe-icon-check absolute inset-0"
+              style={{ color: tierColor, opacity: 0 }}
+            >
+              <path
+                d="M2 7.5l3.5 3.5 6.5-7"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </div>
+
           <input
             ref={inputRef}
             type="text"
@@ -257,7 +287,8 @@ export default function QuickEntryApp() {
             onKeyDown={handleKeyDown}
             placeholder="Quick add task..."
             autoFocus
-            className="flex-1 bg-transparent text-sm font-sans outline-none"
+            disabled={committing}
+            className="qe-task-text flex-1 bg-transparent text-sm font-sans outline-none"
             style={{ color: '#e0e0e0', caretColor: '#e0e0e0' }}
           />
 

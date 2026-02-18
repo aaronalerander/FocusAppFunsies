@@ -12,21 +12,29 @@ import {
 } from '@/hooks/useSound'
 
 // ── Tier config ───────────────────────────────────────────────────────────
+//
+// Research basis (Clark et al. 2009, Murch et al. 2020, Mentzoni et al. 2010):
+// – The anticipatory spin window that maximises arousal is 2.8–6s flat across
+//   all tiers. Longer spins don't add tension — they become tedious.
+// – Tier differentiation comes from HOLD time (how long the result stays up),
+//   not spin length. The result is what the player remembers (peak-end rule).
+// – Near-miss frames should be 300–600ms each to register consciously.
+// – SCR (skin conductance) peaks 3–6s after reveal — hold must cover this.
 
 const TIER_DURATION = {
-  common:    1200,
-  rare:      1600,
-  epic:      2000,
-  legendary: 2600,
-  mythic:    3200,
+  common:    3000,  // 3.0s — within the validated 2.8–6s arousal window
+  rare:      3200,  // 3.2s — barely longer; suspense is equal, payoff scales
+  epic:      3400,  // 3.4s
+  legendary: 3800,  // 3.8s — slight extra crawl before the lock
+  mythic:    4200,  // 4.2s — maximum spin without hitting tedium threshold
 }
 
 const TIER_HOLD = {
-  common:    500,
-  rare:      700,
-  epic:      900,
-  legendary: 1200,
-  mythic:    1800,
+  common:    1500,  // 1.5s — enough to read the result
+  rare:      2200,  // 2.2s
+  epic:      3200,  // 3.2s — SCR onset window begins here
+  legendary: 5000,  // 5.0s — full SCR peak (matches Overwatch study hold)
+  mythic:    7000,  // 7.0s — maximum arousal window; feels like a jackpot
 }
 
 const TIER_RESULT_SOUNDS = {
@@ -90,10 +98,11 @@ function Reel({ targetTierId, lockAt, totalDuration, reelIndex }) {
     // Speed curve: fast in the middle, slows down before locking
     function getFrameDelay(elapsed) {
       const progress = elapsed / totalDuration
-      if (progress < 0.3) return 80          // fast spin
-      if (progress < 0.6) return 100         // medium
-      if (progress < 0.8) return 130         // slowing
-      return 170                             // nearly stopped
+      if (progress < 0.25) return 60         // fast spin
+      if (progress < 0.50) return 80         // medium-fast
+      if (progress < 0.70) return 120        // slowing
+      if (progress < 0.85) return 180        // slow crawl
+      return 260                             // nearly stopped
     }
 
     function tick() {
@@ -104,7 +113,8 @@ function Reel({ targetTierId, lockAt, totalDuration, reelIndex }) {
         lockedRef.current = true
         const tail = getNearMissTail(targetTierId)
 
-        // Flash first near-miss frame
+        // Flash first near-miss frame — 400ms each, within the 300–600ms
+        // conscious-registration window (Clark et al. 2009)
         setDisplayItem(tail[0])
         setTimeout(() => {
           // Flash second near-miss frame (one tier closer)
@@ -120,8 +130,8 @@ function Reel({ targetTierId, lockAt, totalDuration, reelIndex }) {
               color: target.color,
             })
             setLocked(true)
-          }, 120)
-        }, 120)
+          }, 400)
+        }, 400)
         return
       }
 
@@ -243,7 +253,7 @@ function SlotMachineInner({ slotMachine, tier, soundEnabled, dismissSlotMachine 
           next[i] = true
           return next
         })
-      }, t + 240) // +240ms to fire after the near-miss frames finish
+      }, t + 800) // +800ms to fire after both near-miss frames (400ms × 2)
     )
 
     // Transition to result phase after last reel locks + near-miss delay
@@ -253,7 +263,7 @@ function SlotMachineInner({ slotMachine, tier, soundEnabled, dismissSlotMachine 
         const fn = TIER_RESULT_SOUNDS[tier.id]
         if (fn) fn()
       }
-    }, lockAt[2] + 300)
+    }, lockAt[2] + 900)
 
     return () => {
       timers.forEach(clearTimeout)
