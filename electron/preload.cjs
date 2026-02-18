@@ -51,4 +51,9 @@ contextBridge.exposeInMainWorld('focusAPI', {
     ipcRenderer.on('task-added-externally', wrapped)
     return () => ipcRenderer.removeListener('task-added-externally', wrapped)
   },
+  onFocusTaskInput: (callback) => {
+    const wrapped = () => callback()
+    ipcRenderer.on('focus-task-input', wrapped)
+    return () => ipcRenderer.removeListener('focus-task-input', wrapped)
+  },
 })

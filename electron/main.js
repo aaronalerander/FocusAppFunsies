@@ -11,7 +11,7 @@ import {
   calculateCatchUpBleed,
 } from '../src/utils/progression.js'
 import { getLogicalToday, getResetTimestamp } from '../src/utils/dateUtils.js'
-import { createQuickEntryWindow, toggleQuickEntry, hideQuickEntry, destroyQuickEntry } from './quickEntry.js'
+import { createQuickEntryWindow, toggleQuickEntry, hideQuickEntry, destroyQuickEntry, setMainWindow } from './quickEntry.js'
 
 // Suppress EPIPE errors from Electron's internal IPC pipe to hidden renderer processes.
 // These are harmless — they occur when a renderer's stdin pipe closes before a write completes.
@@ -162,6 +162,13 @@ migrateFromJSON()
 let mainWindow
 
 function createWindow() {
+  // Prevent multiple main windows — focus existing one instead
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.show()
+    mainWindow.focus()
+    return
+  }
+
   mainWindow = new BrowserWindow({
     width: 640,
     height: 800,
@@ -193,7 +200,10 @@ function createWindow() {
 
   mainWindow.on('closed', () => {
     mainWindow = null
+    setMainWindow(null)
   })
+
+  setMainWindow(mainWindow)
 }
 
 function getYesterday(todayStr) {

@@ -21,6 +21,15 @@ export default function TaskInput() {
   const isFull = isToday && todayCount >= taskSlots
   const placeholder = activeTab === 'later' ? 'Add to up next...' : 'What needs to happen today?'
 
+  // Focus input when triggered from quick-entry shortcut while app is focused
+  useEffect(() => {
+    if (window.focusAPI.onFocusTaskInput) {
+      return window.focusAPI.onFocusTaskInput(() => {
+        inputRef.current?.focus()
+      })
+    }
+  }, [])
+
   // Auto-focus input when user starts typing anywhere in the app
   useEffect(() => {
     const handleGlobalKeyDown = (e) => {

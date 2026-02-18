@@ -11,8 +11,17 @@ const WIN_WIDTH = 580
 
 let quickEntryWindow = null
 let tray = null
+let mainWindowRef = null
 let webContentsReady = false
 let hiding = false   // debounce guard
+
+/**
+ * Store a reference to the main window so we can detect
+ * when the user is already looking at the Focus app.
+ */
+export function setMainWindow(win) {
+  mainWindowRef = win
+}
 
 function safeSend(channel, ...args) {
   if (!quickEntryWindow || quickEntryWindow.isDestroyed()) return
@@ -145,6 +154,14 @@ export function createQuickEntryWindow() {
 
 export function showQuickEntry() {
   if (!quickEntryWindow || quickEntryWindow.isDestroyed()) return
+
+  // If the main Focus window is already focused, don't show the quick-entry
+  // bar — just tell the main window to focus its task input instead.
+  if (mainWindowRef && !mainWindowRef.isDestroyed() && mainWindowRef.isFocused()) {
+    mainWindowRef.webContents.send('focus-task-input')
+    return
+  }
+
   if (quickEntryWindow.isVisible()) return
 
   hiding = false
