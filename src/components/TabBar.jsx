@@ -1,6 +1,8 @@
 import { motion } from 'framer-motion'
 import useTaskStore from '@/store/tasks'
 
+const GOLD = '#FFD700'
+
 const tabs = [
   { id: 'today', label: 'today' },
   { id: 'later', label: 'later' },
@@ -13,8 +15,10 @@ export default function TabBar() {
   const openSettings = useTaskStore(s => s.openSettings)
   const theme = useTaskStore(s => s.settings.theme)
   const tasks = useTaskStore(s => s.tasks)
+  const boardClearedToday = useTaskStore(s => s.progression.boardClearedToday)
 
   const isDark = theme === 'dark'
+  const accentColor = boardClearedToday ? GOLD : null
 
   const getCounts = (tabId) => {
     if (tabId === 'today') return tasks.filter(t => t.status === 'today').length
@@ -64,9 +68,10 @@ export default function TabBar() {
                   animate={{ scale: 1, opacity: 1 }}
                   className={`text-xs font-tabular ${
                     isActive
-                      ? 'text-accent'
+                      ? accentColor ? '' : 'text-accent'
                       : isDark ? 'text-muted-dark' : 'text-muted-light'
                   }`}
+                  style={isActive && accentColor ? { color: accentColor } : undefined}
                 >
                   {count}
                 </motion.span>
@@ -74,7 +79,8 @@ export default function TabBar() {
               {isActive && (
                 <motion.div
                   layoutId="activeTab"
-                  className="absolute bottom-0 left-0 right-0 h-px bg-accent"
+                  className={`absolute bottom-0 left-0 right-0 h-px ${accentColor ? '' : 'bg-accent'}`}
+                  style={accentColor ? { backgroundColor: accentColor } : undefined}
                   transition={{ type: 'spring', stiffness: 400, damping: 30 }}
                 />
               )}

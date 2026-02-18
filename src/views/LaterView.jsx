@@ -27,12 +27,12 @@ export default function LaterView() {
 
   return (
     <div className="h-full flex flex-col pt-4">
-      <TaskInput />
-
       <div className="flex-1 overflow-y-auto">
         <SortableTaskList tasks={laterTasks} />
         {laterTasks.length === 0 && <EmptyState isDark={isDark} />}
       </div>
+
+      <TaskInput />
     </div>
   )
 }

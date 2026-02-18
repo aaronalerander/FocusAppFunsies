@@ -8,6 +8,7 @@ import SortableTaskList from '@/components/SortableTaskList'
 function StreakMessage() {
   const streakMessage = useTaskStore(s => s.ui.streakMessage)
   const theme = useTaskStore(s => s.settings.theme)
+  const boardClearedToday = useTaskStore(s => s.progression.boardClearedToday)
 
   const messages = {
     '5tasks': "On a roll.",
@@ -25,7 +26,10 @@ function StreakMessage() {
           transition={{ type: 'spring', stiffness: 400, damping: 20 }}
           className="px-6 pb-2"
         >
-          <span className="text-sm font-sans font-medium text-accent">
+          <span
+            className={`text-sm font-sans font-medium ${boardClearedToday ? '' : 'text-accent'}`}
+            style={boardClearedToday ? { color: '#FFD700' } : undefined}
+          >
             {messages[streakMessage]}
           </span>
         </motion.div>
@@ -48,7 +52,7 @@ function EmptyState({ isDark }) {
       <p className={`text-sm font-sans text-center ${isDark ? 'text-muted-dark' : 'text-muted-light'} opacity-50`}>
         Nothing for today yet.
         <br />
-        Add a task above.
+        Add a task below.
       </p>
     </motion.div>
   )
@@ -68,12 +72,13 @@ export default function TodayView() {
       </div>
 
       <StreakMessage />
-      <TaskInput />
 
       <div className="flex-1 overflow-y-auto">
         <SortableTaskList tasks={todayTasks} />
         {todayTasks.length === 0 && <EmptyState isDark={isDark} />}
       </div>
+
+      <TaskInput />
     </div>
   )
 }

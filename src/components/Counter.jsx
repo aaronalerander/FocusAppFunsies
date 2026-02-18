@@ -2,8 +2,9 @@ import { motion } from 'framer-motion'
 import useTaskStore from '@/store/tasks'
 
 const DIGIT_HEIGHT = 80 // px
+const GOLD = '#FFD700'
 
-function Digit({ value }) {
+function Digit({ value, color }) {
   return (
     <div
       className="overflow-hidden relative inline-block"
@@ -17,12 +18,13 @@ function Digit({ value }) {
         {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => (
           <div
             key={n}
-            className="text-accent font-display font-tabular select-none"
+            className="font-display font-tabular select-none"
             style={{
               height: DIGIT_HEIGHT,
               fontSize: DIGIT_HEIGHT,
               lineHeight: `${DIGIT_HEIGHT}px`,
-              letterSpacing: '-0.02em'
+              letterSpacing: '-0.02em',
+              color,
             }}
           >
             {n}
@@ -33,12 +35,12 @@ function Digit({ value }) {
   )
 }
 
-function AnimatedNumber({ value, className, style }) {
+function AnimatedNumber({ value, className, style, color }) {
   const digits = String(Math.max(0, value)).split('').map(Number)
   return (
     <div className={`inline-flex items-center ${className || ''}`} style={style}>
       {digits.map((d, i) => (
-        <Digit key={i} value={d} />
+        <Digit key={i} value={d} color={color} />
       ))}
     </div>
   )
@@ -47,7 +49,9 @@ function AnimatedNumber({ value, className, style }) {
 export default function Counter() {
   const todayProgress = useTaskStore(s => s.todayProgress())
   const theme = useTaskStore(s => s.settings.theme)
+  const boardClearedToday = useTaskStore(s => s.progression.boardClearedToday)
   const isDark = theme === 'dark'
+  const accentColor = boardClearedToday ? GOLD : '#C8F135'
 
   const { completed, total } = todayProgress
 
@@ -55,7 +59,7 @@ export default function Counter() {
     <div>
       <div className="flex items-baseline gap-2">
         {/* Main slot-machine counter */}
-        <AnimatedNumber value={completed} />
+        <AnimatedNumber value={completed} color={accentColor} />
 
         {/* Separator and total */}
         <div
@@ -85,7 +89,8 @@ export default function Counter() {
         <motion.p
           initial={{ opacity: 0, y: 4 }}
           animate={{ opacity: 1, y: 0 }}
-          className="text-xs font-sans mt-1 text-accent"
+          className="text-xs font-sans mt-1"
+          style={{ color: accentColor }}
         >
           All done.
         </motion.p>

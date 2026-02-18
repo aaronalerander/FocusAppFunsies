@@ -111,7 +111,7 @@ export default function XPSummary() {
               <span className={`text-xs font-sans ${isDark ? 'text-muted-dark' : 'text-muted-light'}`}>
                 Daily ramp bonus
               </span>
-              <span className="text-sm font-sans font-semibold text-accent">
+              <span className="text-sm font-sans font-semibold" style={{ color: '#FFD700' }}>
                 +{(xpSummary.totalXP - (xpSummary.tasksCompleted * 100 * xpSummary.streakMultiplier)).toFixed(0)}
               </span>
             </motion.div>
@@ -139,7 +139,7 @@ export default function XPSummary() {
             <span className={`text-sm font-sans font-bold ${isDark ? 'text-text-dark' : 'text-text-light'}`}>
               Total XP
             </span>
-            <span className="text-lg font-sans font-bold text-accent">
+            <span className="text-lg font-sans font-bold" style={{ color: '#FFD700' }}>
               +<AnimatedNumber value={xpSummary.totalXP} />
             </span>
           </motion.div>

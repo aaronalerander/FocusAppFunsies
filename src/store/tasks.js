@@ -178,6 +178,7 @@ const useTaskStore = create((set, get) => ({
     const task = get().tasks.find(t => t.id === id)
     if (!task || task.status === 'done') return
 
+    const isFreeXPTask = get().progression.freeXPTaskIds.includes(id)
     const completedAt = new Date().toISOString()
     const changes = { status: 'done', completedAt }
 
@@ -211,7 +212,7 @@ const useTaskStore = create((set, get) => ({
       if (get().settings.soundEnabled) playCompletionSound(progress.completed, isAllDone)
 
       setTimeout(() => {
-        set(state => ({ ui: { ...state.ui, confetti: { mode, id: Date.now() } } }))
+        set(state => ({ ui: { ...state.ui, confetti: { mode, id: Date.now(), isFreeXP: isFreeXPTask } } }))
       }, 600)
 
       // ── XP Award ──────────────────────────────────────────────
@@ -308,7 +309,7 @@ const useTaskStore = create((set, get) => ({
       if (get().settings.soundEnabled) playCompletionSound(progress.completed, isAllDone)
 
       setTimeout(() => {
-        set(state => ({ ui: { ...state.ui, confetti: { mode, id: Date.now() } } }))
+        set(state => ({ ui: { ...state.ui, confetti: { mode, id: Date.now(), isFreeXP: isFreeXPTask } } }))
       }, 600)
     }
 

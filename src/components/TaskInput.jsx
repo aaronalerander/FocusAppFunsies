@@ -2,6 +2,8 @@ import { useState, useRef } from 'react'
 import { motion } from 'framer-motion'
 import useTaskStore from '@/store/tasks'
 
+const GOLD = '#FFD700'
+
 export default function TaskInput() {
   const [value, setValue] = useState('')
   const addTask = useTaskStore(s => s.addTask)
@@ -9,9 +11,11 @@ export default function TaskInput() {
   const activeTab = useTaskStore(s => s.ui.activeTab)
   const tasks = useTaskStore(s => s.tasks)
   const taskSlots = useTaskStore(s => s.taskSlots())
+  const boardClearedToday = useTaskStore(s => s.progression.boardClearedToday)
   const inputRef = useRef(null)
 
   const isDark = theme === 'dark'
+  const useGold = boardClearedToday
   const isToday = activeTab !== 'later' && activeTab !== 'done'
   const todayCount = isToday ? tasks.filter(t => t.status === 'today').length : 0
   const isFull = isToday && todayCount >= taskSlots
@@ -33,13 +37,13 @@ export default function TaskInput() {
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: -6 }}
+      initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.1, type: 'spring', stiffness: 300, damping: 28 }}
-      className={`mx-6 mb-4 flex items-center gap-3 px-4 py-3 rounded-xl border transition-colors ${
+      className={`mx-6 mt-2 mb-4 flex items-center gap-3 px-4 py-3 rounded-xl border transition-colors ${
         isDark
-          ? 'bg-surface-dark border-border-dark focus-within:border-accent/40'
-          : 'bg-surface-light border-border-light focus-within:border-accent/60'
+          ? `bg-surface-dark border-border-dark ${useGold ? 'focus-within:border-[#FFD700]/40' : 'focus-within:border-accent/40'}`
+          : `bg-surface-light border-border-light ${useGold ? 'focus-within:border-[#FFD700]/60' : 'focus-within:border-accent/60'}`
       }`}
     >
       <svg

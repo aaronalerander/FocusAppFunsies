@@ -5,10 +5,13 @@ import { getBurstParticleProps } from '@/hooks/useAnimations'
 import { getTagColor } from '@/utils/tagColors'
 import TagInput from '@/components/TagInput'
 
-function CheckboxButton({ taskId, done, onComplete }) {
+const GOLD = '#FFD700'
+
+function CheckboxButton({ taskId, done, onComplete, accentColor }) {
   const [isBursting, setIsBursting] = useState(false)
   const theme = useTaskStore(s => s.settings.theme)
   const isDark = theme === 'dark'
+  const useGold = !!accentColor
 
   const handleClick = () => {
     if (done) return
@@ -26,12 +29,12 @@ function CheckboxButton({ taskId, done, onComplete }) {
           return (
             <motion.div
               key={i}
-              className="absolute w-1.5 h-1.5 rounded-full bg-accent pointer-events-none"
+              className={`absolute w-1.5 h-1.5 rounded-full pointer-events-none ${useGold ? '' : 'bg-accent'}`}
               initial={props.initial}
               animate={props.animate}
               exit={{ opacity: 0 }}
               transition={props.transition}
-              style={{ zIndex: 10 }}
+              style={{ zIndex: 10, ...(useGold ? { backgroundColor: accentColor } : {}) }}
             />
           )
         })}
@@ -41,22 +44,24 @@ function CheckboxButton({ taskId, done, onComplete }) {
       <motion.div
         className={`w-5 h-5 rounded-full border-2 flex items-center justify-center cursor-pointer transition-colors ${
           done
-            ? 'border-accent bg-accent/20'
+            ? useGold ? '' : 'border-accent bg-accent/20'
             : isDark
-              ? 'border-muted-dark hover:border-accent'
-              : 'border-muted-light hover:border-accent'
+              ? useGold ? 'border-muted-dark' : 'border-muted-dark hover:border-accent'
+              : useGold ? 'border-muted-light' : 'border-muted-light hover:border-accent'
         }`}
         animate={isBursting ? { scale: [1, 1.4, 1] } : { scale: 1 }}
         transition={{ duration: 0.3, ease: [0.34, 1.56, 0.64, 1] }}
         onClick={handleClick}
-        whileHover={{ scale: done ? 1 : 1.1 }}
+        whileHover={{ scale: done ? 1 : 1.1, ...(useGold && !done ? { borderColor: accentColor } : {}) }}
+        style={done && useGold ? { borderColor: accentColor, backgroundColor: `${accentColor}33` } : undefined}
       >
         {done && (
           <motion.div
-            className="w-2.5 h-2.5 rounded-full bg-accent"
+            className={`w-2.5 h-2.5 rounded-full ${useGold ? '' : 'bg-accent'}`}
             initial={{ scale: 0 }}
             animate={{ scale: 1 }}
             transition={{ type: 'spring', stiffness: 400, damping: 20 }}
+            style={useGold ? { backgroundColor: accentColor } : undefined}
           />
         )}
       </motion.div>
@@ -90,9 +95,11 @@ export default function TaskItem({ task, dragHandleProps }) {
   const confirmDelete = useTaskStore(s => s.confirmDelete)
   const updateTaskTag = useTaskStore(s => s.updateTaskTag)
   const freeXPTaskIds = useTaskStore(s => s.progression.freeXPTaskIds)
+  const boardClearedToday = useTaskStore(s => s.progression.boardClearedToday)
   const theme = useTaskStore(s => s.settings.theme)
   const isDark = theme === 'dark'
   const isFreeXP = task.status === 'today' && freeXPTaskIds.includes(task.id)
+  const accentColor = boardClearedToday ? GOLD : null
 
   const handleTagCommit = useCallback((tag) => {
     updateTaskTag(task.id, tag)
@@ -123,7 +130,7 @@ export default function TaskItem({ task, dragHandleProps }) {
         isHovered && !isDone
           ? isDark ? 'bg-surface-dark' : 'bg-surface-light'
           : 'bg-transparent'
-      }`}
+      } ${isFreeXP ? 'free-xp-glow' : ''}`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       onContextMenu={(e) => {
@@ -156,13 +163,20 @@ export default function TaskItem({ task, dragHandleProps }) {
           taskId={task.id}
           done={isDone}
           onComplete={() => completeTask(task.id)}
+          accentColor={accentColor}
         />
       )}
 
       {/* Done task circle indicator */}
       {isDone && (
-        <div className="w-5 h-5 rounded-full border-2 border-accent bg-accent/20 flex items-center justify-center flex-shrink-0">
-          <div className="w-2.5 h-2.5 rounded-full bg-accent" />
+        <div
+          className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${accentColor ? '' : 'border-accent bg-accent/20'}`}
+          style={accentColor ? { borderColor: accentColor, backgroundColor: `${accentColor}33` } : undefined}
+        >
+          <div
+            className={`w-2.5 h-2.5 rounded-full ${accentColor ? '' : 'bg-accent'}`}
+            style={accentColor ? { backgroundColor: accentColor } : undefined}
+          />
         </div>
       )}
 
@@ -190,8 +204,8 @@ export default function TaskItem({ task, dragHandleProps }) {
 
         {/* Free XP indicator */}
         {isFreeXP && (
-          <span className="text-[10px] font-sans font-medium text-accent/70 mt-0.5">
-            free XP
+          <span className="text-[10px] font-sans font-bold mt-0.5 tracking-wider" style={{ color: '#FFD700' }}>
+            FREE XP
           </span>
         )}
 

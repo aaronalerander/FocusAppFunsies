@@ -53,3 +53,24 @@
     -webkit-app-region: no-drag;
   }
 }
+
+/* Free XP slot-machine inspired pulsing gold border */
+@keyframes freeXpPulse {
+  0% {
+    border-color: rgba(255, 215, 0, 0.3);
+    box-shadow: 0 0 4px rgba(255, 215, 0, 0.1), inset 0 0 4px rgba(255, 215, 0, 0.05);
+  }
+  50% {
+    border-color: rgba(255, 215, 0, 0.8);
+    box-shadow: 0 0 12px rgba(255, 215, 0, 0.3), inset 0 0 8px rgba(255, 215, 0, 0.1);
+  }
+  100% {
+    border-color: rgba(255, 215, 0, 0.3);
+    box-shadow: 0 0 4px rgba(255, 215, 0, 0.1), inset 0 0 4px rgba(255, 215, 0, 0.05);
+  }
+}
+
+.free-xp-glow {
+  border: 1.5px solid rgba(255, 215, 0, 0.5);
+  animation: freeXpPulse 2s ease-in-out infinite;
+}
