@@ -177,3 +177,18 @@ export function toggleQuickEntry() {
     showQuickEntry()
   }
 }
+
+/**
+ * Destroy the tray icon and quick-entry window.
+ * Called on app quit so nothing keeps the process alive.
+ */
+export function destroyQuickEntry() {
+  if (tray) {
+    tray.destroy()
+    tray = null
+  }
+  if (quickEntryWindow && !quickEntryWindow.isDestroyed()) {
+    quickEntryWindow.destroy()
+    quickEntryWindow = null
+  }
+}

@@ -11,7 +11,7 @@ import {
   calculateCatchUpBleed,
 } from '../src/utils/progression.js'
 import { getLogicalToday, getResetTimestamp } from '../src/utils/dateUtils.js'
-import { createQuickEntryWindow, toggleQuickEntry, hideQuickEntry } from './quickEntry.js'
+import { createQuickEntryWindow, toggleQuickEntry, hideQuickEntry, destroyQuickEntry } from './quickEntry.js'
 
 // Suppress EPIPE errors from Electron's internal IPC pipe to hidden renderer processes.
 // These are harmless — they occur when a renderer's stdin pipe closes before a write completes.
@@ -478,7 +478,9 @@ app.whenReady().then(() => {
   globalShortcut.register('Alt+Space', toggleQuickEntry)
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    // Re-create the main window if it was closed (the quick-entry window
+    // is always alive but hidden, so we check mainWindow directly)
+    if (!mainWindow || mainWindow.isDestroyed()) createWindow()
     // Re-check reset when app is re-activated (e.g. after sleeping overnight)
     checkDailyReset()
     // Apply any bleed that accumulated while backgrounded or during system sleep
@@ -490,11 +492,14 @@ app.whenReady().then(() => {
 })
 
 app.on('window-all-closed', () => {
+  // On macOS, keep the app running (standard behavior) — the tray icon
+  // and quick-entry window persist. On other platforms, quit.
   if (process.platform !== 'darwin') app.quit()
 })
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()
+  destroyQuickEntry()
 })
 
 // ── IPC Handlers ──────────────────────────────────────────────
