@@ -69,31 +69,71 @@ const SPIN_SEQUENCE = [
   { id: 'common',    value: '1x',    color: '#888888' },
 ]
 
-// Near-miss tail shown on reels 1 and 2 just before locking — always ends
-// one tier above the actual result so the final reel "settles down"
-function getNearMissTail(targetId) {
+// Convert a tier object to the display value string
+function tierToDisplayItem(t) {
+  const valueMap = { 1: '1x', 1.5: '1.5x', 2: '2x', 3.5: '3.5x', 10: '10x' }
+  return { id: t.id, value: valueMap[t.value] ?? `${t.value}x`, color: t.color }
+}
+
+function getTierByOffset(targetId, offset) {
   const idx = MULTIPLIER_TIERS.findIndex(t => t.id === targetId)
-  // Show the tier above if it exists, otherwise mythic
-  const above = MULTIPLIER_TIERS[Math.min(idx + 1, MULTIPLIER_TIERS.length - 1)]
-  const twoAbove = MULTIPLIER_TIERS[Math.min(idx + 2, MULTIPLIER_TIERS.length - 1)]
-  return [twoAbove, above] // two frames of higher values before locking
+  return MULTIPLIER_TIERS[Math.max(0, Math.min(idx + offset, MULTIPLIER_TIERS.length - 1))]
+}
+
+// ── Spin story ────────────────────────────────────────────────────────────
+// Decide once per spin what each of the 3 reels actually lands on.
+// Reel 2 always shows the true result. Reels 0 and 1 vary:
+//
+//   40% full match  — all 3 match the real result (clean win feel)
+//   35% near-miss   — reels 0+1 land one tier above (tantalising)
+//   25% scatter     — reels 0+1 each get a random ±1 offset (clear miss)
+//
+// This mirrors how real slot machines vary their "story" to avoid the
+// animation feeling mechanical.
+function rollSpinStory(targetId) {
+  const r = Math.random()
+  const target = MULTIPLIER_TIERS.find(t => t.id === targetId)
+
+  if (r < 0.40) {
+    // Full match — all three land on the real result
+    return [target, target, target]
+  } else if (r < 0.75) {
+    // Near-miss — reels 0+1 one tier above, reel 2 is correct
+    const above = getTierByOffset(targetId, +1)
+    return [above, above, target]
+  } else {
+    // Scatter — reels 0 and 1 get independent random offsets
+    // Use +1 / -1 so they clearly differ from each other and from reel 2
+    const reel0 = getTierByOffset(targetId, +1)
+    const reel1 = getTierByOffset(targetId, -1)
+    return [reel0, reel1, target]
+  }
 }
 
 // ── Single reel ───────────────────────────────────────────────────────────
+//
+// landingTierId: the tier this specific reel lands on (may differ from the
+//                true result on reels 0 and 1 — see rollSpinStory above)
 
-function Reel({ targetTierId, lockAt, totalDuration, reelIndex }) {
-  const [displayItem, setDisplayItem] = useState(SPIN_SEQUENCE[0])
+function Reel({ landingTierId, lockAt, totalDuration, reelIndex }) {
+  // Each reel starts at a different point in the sequence so they spin
+  // visually out of phase — makes it look like independent drums
+  const initOffset = (reelIndex * 4) % SPIN_SEQUENCE.length
+  const [displayItem, setDisplayItem] = useState(SPIN_SEQUENCE[initOffset])
   const [locked, setLocked] = useState(false)
   const startRef = useRef(null)
   const frameRef = useRef(null)
   const lockedRef = useRef(false)
 
-  const target = MULTIPLIER_TIERS.find(t => t.id === targetTierId)
-  const nearMissTail = getNearMissTail(targetTierId)
+  const landingTier = MULTIPLIER_TIERS.find(t => t.id === landingTierId)
+
+  // Near-miss tail: always flashes one tier above the landing value
+  // so every reel has a micro-tease before settling
+  const nearMissAbove = getTierByOffset(landingTierId, +1)
 
   useEffect(() => {
     startRef.current = performance.now()
-    let seqIndex = 0
+    let seqIndex = initOffset
 
     // Speed curve: fast in the middle, slows down before locking
     function getFrameDelay(elapsed) {
@@ -109,26 +149,15 @@ function Reel({ targetTierId, lockAt, totalDuration, reelIndex }) {
       const elapsed = performance.now() - startRef.current
 
       if (elapsed >= lockAt && !lockedRef.current) {
-        // Show near-miss tail: flash one or two higher tiers before landing
         lockedRef.current = true
-        const tail = getNearMissTail(targetTierId)
 
-        // Flash first near-miss frame — 400ms each, within the 300–600ms
-        // conscious-registration window (Clark et al. 2009)
-        setDisplayItem(tail[0])
+        // Flash near-miss frame (one tier above landing) — 400ms each,
+        // within the 300–600ms conscious-registration window (Clark et al. 2009)
+        setDisplayItem(tierToDisplayItem(nearMissAbove))
         setTimeout(() => {
-          // Flash second near-miss frame (one tier closer)
-          setDisplayItem(tail[1])
+          // Step down to the tier that this reel actually lands on
+          setDisplayItem(tierToDisplayItem(landingTier))
           setTimeout(() => {
-            // Land on actual result
-            setDisplayItem({
-              id: target.id,
-              value: target.value === 1.0 ? '1x' :
-                     target.value === 1.5 ? '1.5x' :
-                     target.value === 2.0 ? '2x' :
-                     target.value === 3.5 ? '3.5x' : '10x',
-              color: target.color,
-            })
             setLocked(true)
           }, 400)
         }, 400)
@@ -160,13 +189,13 @@ function Reel({ targetTierId, lockAt, totalDuration, reelIndex }) {
         width: 96,
         height: 96,
         background: locked
-          ? `radial-gradient(ellipse at center, ${target.color}22 0%, rgba(0,0,0,0.6) 100%)`
+          ? `radial-gradient(ellipse at center, ${landingTier.color}22 0%, rgba(0,0,0,0.6) 100%)`
           : 'rgba(255,255,255,0.05)',
         border: locked
-          ? `1px solid ${target.color}66`
+          ? `1px solid ${landingTier.color}66`
           : '1px solid rgba(255,255,255,0.1)',
         transition: 'background 0.3s, border-color 0.3s',
-        boxShadow: locked ? `0 0 20px ${target.color}33` : 'none',
+        boxShadow: locked ? `0 0 20px ${landingTier.color}33` : 'none',
       }}
     >
       <AnimatePresence mode="wait">
@@ -199,7 +228,7 @@ function Reel({ targetTierId, lockAt, totalDuration, reelIndex }) {
           initial={{ opacity: 0.6 }}
           animate={{ opacity: 0 }}
           transition={{ duration: 0.5 }}
-          style={{ background: target.color, mixBlendMode: 'screen' }}
+          style={{ background: landingTier.color, mixBlendMode: 'screen' }}
         />
       )}
     </div>
@@ -231,6 +260,11 @@ export default function SlotMachine() {
 function SlotMachineInner({ slotMachine, tier, soundEnabled, dismissSlotMachine }) {
   const totalDuration = TIER_DURATION[tier.id]
   const holdDuration = TIER_HOLD[tier.id]
+
+  // Roll the spin story once on mount — determines what each reel lands on.
+  // useRef so it's stable across re-renders without being in state.
+  const spinStory = useRef(rollSpinStory(tier.id))
+  const reelLandingTierIds = spinStory.current.map(t => t.id)
 
   // Reel lock times — staggered, each locks sequentially
   // Last reel locks at 85% of total duration
@@ -336,7 +370,7 @@ function SlotMachineInner({ slotMachine, tier, soundEnabled, dismissSlotMachine 
             <Reel
               key={i}
               reelIndex={i}
-              targetTierId={slotMachine.tier}
+              landingTierId={reelLandingTierIds[i]}
               lockAt={lockAt[i]}
               totalDuration={totalDuration}
             />

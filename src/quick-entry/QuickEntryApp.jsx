@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { getTagColor } from '../utils/tagColors'
 import { RANK_COLORS } from '../utils/progression'
+import { playTaskAdded } from '../hooks/useSound'
 
 export default function QuickEntryApp() {
   const [value, setValue] = useState('')
@@ -92,6 +93,7 @@ export default function QuickEntryApp() {
     if (!value.trim()) return
     // Fire the add immediately — don't wait on animation
     window.quickEntryAPI.addTask(value.trim(), tag)
+    playTaskAdded()
     // Play confirmation animation, then hide after it completes
     setCommitting(true)
     setTimeout(() => {

@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { v4 as uuidv4 } from 'uuid'
-import { playCompletionSound } from '@/hooks/useSound'
+import { playCompletionSound, playTaskAdded } from '@/hooks/useSound'
 import {
   calculateTaskXP,
   calculateTaskXPWithMultiplier,
@@ -214,6 +214,7 @@ const useTaskStore = create((set, get) => ({
 
     set(state => ({ tasks: [...state.tasks, task] }))
     await window.focusAPI.tasks.add(task)
+    if (get().settings.soundEnabled) playTaskAdded()
 
     // After first board clear of the day, all new Today tasks are free XP
     if (targetStatus === 'today' && get().progression.boardClearedToday) {

@@ -5,6 +5,9 @@ let ctx = null
 
 function getCtx() {
   if (!ctx) ctx = new AudioContext()
+  // Browsers/Electron suspend AudioContext until a user gesture occurs.
+  // Resume it every time so sounds fire reliably after the app has been idle.
+  if (ctx.state === 'suspended') ctx.resume()
   return ctx
 }
 
@@ -84,6 +87,21 @@ function playTier5() {
   tone(ac, E6, t + 0.20, 0.7, 0.07, 'triangle')
   // Sub-octave body — square wave very quiet for fullness
   tone(ac, C5 / 2, t, 0.6, 0.04, 'square')
+}
+
+// ── Task Added Sound ─────────────────────────────────────────────────────────
+// Distinct from the completion chime — lighter, shorter, "queued" feeling.
+// A soft descending two-note tap: the task is registered, not celebrated.
+export function playTaskAdded() {
+  try {
+    const ac = getCtx()
+    const t = ac.currentTime
+    // Quick high-to-low tap — acknowledges input without fanfare
+    tone(ac, G5, t,        0.18, 0.09, 'sine')
+    tone(ac, E5, t + 0.07, 0.22, 0.07, 'sine')
+  } catch (err) {
+    console.warn('[useSound] task added error:', err)
+  }
 }
 
 // ── Slot Machine Sounds ──────────────────────────────────────────────────────
