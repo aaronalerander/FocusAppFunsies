@@ -587,6 +587,23 @@ export default function RankDisplay() {
         />
       </svg>
 
+      {/* Liquid-glass disc behind the center content */}
+      <div
+        style={{
+          position: 'absolute',
+          inset: STROKE + 2,
+          borderRadius: '50%',
+          background: isDark
+            ? 'radial-gradient(circle at 38% 32%, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.03) 60%, rgba(0,0,0,0.18) 100%)'
+            : 'radial-gradient(circle at 38% 32%, rgba(255,255,255,0.72) 0%, rgba(255,255,255,0.52) 60%, rgba(200,200,220,0.28) 100%)',
+          backdropFilter: 'blur(12px) saturate(1.4)',
+          WebkitBackdropFilter: 'blur(12px) saturate(1.4)',
+          boxShadow: isDark
+            ? 'inset 0 1px 0 rgba(255,255,255,0.10), inset 0 -1px 0 rgba(0,0,0,0.20)'
+            : 'inset 0 1px 0 rgba(255,255,255,0.80), inset 0 -1px 0 rgba(0,0,0,0.06)',
+        }}
+      />
+
       {/* Center: rank badge ↔ XP delta */}
       {/* Badge — visible during badge-show / badge-out / badge-in */}
       <div

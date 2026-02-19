@@ -351,13 +351,22 @@ function SlotMachineInner({ slotMachine, tier, soundEnabled, dismissSlotMachine 
         )}
       </AnimatePresence>
 
-      {/* Content */}
-      <div className="relative z-10 flex flex-col items-center gap-6">
-
+      {/* Content — liquid-glass full-window overlay */}
+      <motion.div
+        className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-6"
+        style={{
+          background: 'radial-gradient(ellipse at 40% 20%, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.028) 50%, rgba(0,0,0,0.154) 100%)',
+          backdropFilter: 'blur(28px) saturate(1.6)',
+          WebkitBackdropFilter: 'blur(28px) saturate(1.6)',
+        }}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+      >
         {/* Task name */}
         <motion.div
           initial={{ opacity: 0, y: -6 }}
-          animate={{ opacity: 0.45, y: 0 }}
+          animate={{ opacity: 0.55, y: 0 }}
           transition={{ duration: 0.25 }}
           className="text-xs text-white font-sans truncate max-w-[240px] text-center tracking-wide"
         >
@@ -429,7 +438,7 @@ function SlotMachineInner({ slotMachine, tier, soundEnabled, dismissSlotMachine 
           </AnimatePresence>
         </div>
 
-      </div>
+      </motion.div>
     </motion.div>
   )
 }

@@ -5,9 +5,9 @@ import { fileURLToPath } from 'url'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 
-const WIN_HEIGHT = 90
-const EXPANDED_HEIGHT = 300
-const WIN_WIDTH = 580
+const WIN_HEIGHT = 96
+const EXPANDED_HEIGHT = 306
+const WIN_WIDTH = 620
 
 let quickEntryWindow = null
 let tray = null

@@ -292,19 +292,22 @@ export default function QuickEntryApp() {
 
       {/* Combined floating bar + status strip */}
       <div
-        className="qe-bar-shell overflow-hidden rounded-2xl"
         style={{
           width: WIN_WIDTH - 16,
-          boxShadow: '0 8px 32px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.3), 0 0 0 0.5px rgba(255,255,255,0.1)',
+          position: 'relative',
         }}
       >
-        {/* Main input bar */}
+        {/* Main input bar — fully rounded, sits above the drawer */}
         <div
-          className="flex items-center gap-3 px-4 py-3"
+          className="qe-bar-shell flex items-center gap-3 px-4 py-3"
           style={{
+            position: 'relative',
+            zIndex: 1,
+            borderRadius: 16,
             background: 'rgba(30, 30, 30, 0.95)',
             backdropFilter: 'blur(20px)',
             WebkitBackdropFilter: 'blur(20px)',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.3), 0 0 0 0.5px rgba(255,255,255,0.1)',
           }}
         >
           {/* Icon: "+" normally, checkmark on commit */}
@@ -348,10 +351,10 @@ export default function QuickEntryApp() {
             value={value}
             onChange={e => setValue(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Quick add task..."
+            placeholder="What needs to happen today?"
             autoFocus
             disabled={committing}
-            className="qe-task-text flex-1 bg-transparent text-sm font-sans outline-none"
+            className="qe-task-text flex-1 bg-transparent text-sm font-sans outline-none placeholder:opacity-40"
             style={{ color: '#e0e0e0', caretColor: '#e0e0e0' }}
           />
 
@@ -379,30 +382,26 @@ export default function QuickEntryApp() {
           )}
         </div>
 
-        {/* Status strip — darker section behind/below the bar */}
+        {/* Status strip — drawer peeking out below the bar */}
         <div
-          className="flex items-center justify-between px-4 py-1.5"
+          className="flex items-center justify-between px-4"
           style={{
+            paddingTop: 8,
+            paddingBottom: 6,
+            marginTop: -6,
+            borderRadius: 0,
             background: 'rgba(18, 18, 18, 0.95)',
             backdropFilter: 'blur(20px)',
             WebkitBackdropFilter: 'blur(20px)',
+            zIndex: 0,
           }}
         >
           {/* Left: today's task progress */}
           <div className="flex items-center gap-1.5">
-            <svg
-              width="10"
-              height="10"
-              viewBox="0 0 10 10"
-              fill="none"
-              style={{ color: '#555' }}
-            >
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ color: '#555' }}>
               <circle cx="5" cy="5" r="4" stroke="currentColor" strokeWidth="1.2" />
               {stats && stats.total > 0 && (
-                <circle
-                  cx="5"
-                  cy="5"
-                  r="4"
+                <circle cx="5" cy="5" r="4"
                   stroke={stats.completed === stats.total ? '#4ade80' : '#888'}
                   strokeWidth="1.2"
                   strokeDasharray={`${(stats.completed / stats.total) * 25.13} 25.13`}
@@ -418,60 +417,43 @@ export default function QuickEntryApp() {
 
           {/* Right: rank name ↔ XP delta */}
           <div className="flex items-center gap-1.5">
-            {/* Tier dot */}
             <div style={{
               width: 5, height: 5, borderRadius: '50%',
-              backgroundColor: tierColor,
-              flexShrink: 0,
-              boxShadow: `0 0 4px ${tierColor}99`,
-              opacity: 0.85,
+              backgroundColor: tierColor, flexShrink: 0,
+              boxShadow: `0 0 4px ${tierColor}99`, opacity: 0.85,
             }} />
-
-            {/* Swap container */}
             <div style={{ position: 'relative', height: 13, minWidth: 56 }}>
-              {/* Rank name */}
-              <span
-                style={{
-                  position: 'absolute', left: 0, top: 0,
-                  fontSize: 10, fontWeight: 600,
-                  letterSpacing: '0.04em',
-                  textTransform: 'uppercase',
-                  color: tierColor,
-                  whiteSpace: 'nowrap',
-                  opacity: xpVisible ? 0 : 1,
-                  animation:
-                    phase === 'rank-out' ? `qeShrinkOut ${TRANS_MS}ms ease-in forwards` :
-                    phase === 'rank-in'  ? `qeGrowIn ${TRANS_MS + 150}ms cubic-bezier(0.22,1,0.36,1) forwards` :
-                    'none',
-                }}
-              >
+              <span style={{
+                position: 'absolute', left: 0, top: 0,
+                fontSize: 10, fontWeight: 600, letterSpacing: '0.04em',
+                textTransform: 'uppercase', color: tierColor, whiteSpace: 'nowrap',
+                opacity: xpVisible ? 0 : 1,
+                animation:
+                  phase === 'rank-out' ? `qeShrinkOut ${TRANS_MS}ms ease-in forwards` :
+                  phase === 'rank-in'  ? `qeGrowIn ${TRANS_MS + 150}ms cubic-bezier(0.22,1,0.36,1) forwards` :
+                  'none',
+              }}>
                 {stats ? stats.rankName : '–'}
               </span>
-
-              {/* XP delta */}
-              <span
-                style={{
-                  position: 'absolute', left: 0, top: 0,
-                  fontSize: 10, fontWeight: 700,
-                  letterSpacing: '-0.2px',
-                  fontVariantNumeric: 'tabular-nums',
-                  color: xpColor,
-                  whiteSpace: 'nowrap',
-                  opacity: rankVisible ? 0 : 1,
-                  animation:
-                    phase === 'xp-in'  ? `qeGrowIn ${TRANS_MS + 150}ms cubic-bezier(0.22,1,0.36,1) forwards` :
-                    phase === 'xp-out' ? `qeFadeOut ${TRANS_MS}ms ease-in forwards` :
-                    'none',
-                }}
-              >
+              <span style={{
+                position: 'absolute', left: 0, top: 0,
+                fontSize: 10, fontWeight: 700, letterSpacing: '-0.2px',
+                fontVariantNumeric: 'tabular-nums', color: xpColor, whiteSpace: 'nowrap',
+                opacity: rankVisible ? 0 : 1,
+                animation:
+                  phase === 'xp-in'  ? `qeGrowIn ${TRANS_MS + 150}ms cubic-bezier(0.22,1,0.36,1) forwards` :
+                  phase === 'xp-out' ? `qeFadeOut ${TRANS_MS}ms ease-in forwards` :
+                  'none',
+              }}>
                 {xpLabel}
               </span>
             </div>
           </div>
         </div>
+
       </div>
     </div>
   )
 }
 
-const WIN_WIDTH = 580
+const WIN_WIDTH = 620
