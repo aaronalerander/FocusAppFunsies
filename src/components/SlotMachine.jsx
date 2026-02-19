@@ -323,7 +323,7 @@ function SlotMachineInner({ slotMachine, tier, soundEnabled, dismissSlotMachine 
   return (
     <motion.div
       className="fixed inset-0 flex flex-col items-center justify-center"
-      style={{ zIndex: 60 }}
+      style={{ zIndex: 200 }}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}

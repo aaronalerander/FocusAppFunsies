@@ -15,7 +15,7 @@ const FREE_XP   = ['#FFD700', '#DAA520', '#C0C0C0', '#A9A9A9', '#1A1A1A', '#2A2A
 // Common (1x) — just a tiny puff, barely anything
 function fireCommon(isFreeXP) {
   confetti({
-    particleCount: 12,
+    particleCount: 24,
     spread: 35,
     origin: { x: 0.5, y: 0.58 },
     colors: isFreeXP ? FREE_XP : [...BRAND, ...WHITE],
@@ -30,7 +30,7 @@ function fireCommon(isFreeXP) {
 // Rare (1.5x) — small single burst
 function fireRare(isFreeXP) {
   confetti({
-    particleCount: 45,
+    particleCount: 90,
     spread: 55,
     origin: { x: 0.5, y: 0.55 },
     colors: isFreeXP ? FREE_XP : RARE,
@@ -46,7 +46,7 @@ function fireRare(isFreeXP) {
 function fireEpic(isFreeXP) {
   const colors = isFreeXP ? FREE_XP : EPIC
   confetti({
-    particleCount: 80,
+    particleCount: 160,
     spread: 70,
     origin: { x: 0.5, y: 0.5 },
     colors,
@@ -58,7 +58,7 @@ function fireEpic(isFreeXP) {
   })
   setTimeout(() => {
     confetti({
-      particleCount: 40,
+      particleCount: 80,
       spread: 50,
       origin: { x: 0.5, y: 0.55 },
       colors,
@@ -76,7 +76,7 @@ function fireLegendary(isFreeXP) {
   const colors = isFreeXP ? FREE_XP : LEGENDARY
   // Center
   confetti({
-    particleCount: 130,
+    particleCount: 260,
     spread: 85,
     origin: { x: 0.5, y: 0.4 },
     colors,
@@ -88,7 +88,7 @@ function fireLegendary(isFreeXP) {
   // Left cannon
   setTimeout(() => {
     confetti({
-      particleCount: 60,
+      particleCount: 120,
       angle: 65,
       spread: 45,
       origin: { x: 0, y: 0.6 },
@@ -101,7 +101,7 @@ function fireLegendary(isFreeXP) {
   // Right cannon
   setTimeout(() => {
     confetti({
-      particleCount: 60,
+      particleCount: 120,
       angle: 115,
       spread: 45,
       origin: { x: 1, y: 0.6 },
@@ -114,7 +114,7 @@ function fireLegendary(isFreeXP) {
   // Final top shower
   setTimeout(() => {
     confetti({
-      particleCount: 70,
+      particleCount: 140,
       spread: 100,
       origin: { x: 0.5, y: 0.3 },
       colors,
@@ -133,7 +133,7 @@ function fireMythic(isFreeXP) {
   const sideBurst = (side, delay) => {
     setTimeout(() => {
       confetti({
-        particleCount: 50,
+        particleCount: 100,
         angle: side === 'left' ? 65 : 115,
         spread: 40,
         origin: { x: side === 'left' ? 0 : 1, y: 0.6 },
@@ -158,7 +158,7 @@ function fireMythic(isFreeXP) {
   // Phase 2: huge center explosion
   setTimeout(() => {
     confetti({
-      particleCount: 220,
+      particleCount: 440,
       spread: 110,
       origin: { x: 0.5, y: 0.3 },
       colors,
@@ -173,7 +173,7 @@ function fireMythic(isFreeXP) {
   // Phase 3: top-corner rain
   setTimeout(() => {
     confetti({
-      particleCount: 90,
+      particleCount: 180,
       angle: 80,
       spread: 30,
       origin: { x: 0.1, y: 0 },
@@ -186,7 +186,7 @@ function fireMythic(isFreeXP) {
   }, 880)
   setTimeout(() => {
     confetti({
-      particleCount: 90,
+      particleCount: 180,
       angle: 100,
       spread: 30,
       origin: { x: 0.9, y: 0 },
@@ -201,7 +201,7 @@ function fireMythic(isFreeXP) {
   // Phase 4: wide final flourish
   setTimeout(() => {
     confetti({
-      particleCount: 100,
+      particleCount: 200,
       spread: 130,
       origin: { x: 0.5, y: 0.5 },
       colors,
@@ -212,6 +212,98 @@ function fireMythic(isFreeXP) {
       decay: 0.9,
     })
   }, 1380)
+}
+
+// ── Rank Up — max intensity, all colors, sustained multi-wave ─────────────────
+export function fireRankUpConfetti(tierColor, isMajor = false) {
+  const colors = [tierColor, '#FFD700', '#FF3CAC', '#00D4FF', '#C8F135', '#ffffff', '#FF6B6B']
+  // Major promotions (tier change) get 3x the particle intensity
+  const scale = isMajor ? 3.0 : 1.0
+
+  const sideBurst = (side, delay, count = 120) => {
+    setTimeout(() => {
+      confetti({
+        particleCount: Math.round(count * scale),
+        angle: side === 'left' ? 60 : 120,
+        spread: 55,
+        origin: { x: side === 'left' ? 0 : 1, y: 0.55 },
+        colors,
+        ticks: 400,
+        gravity: 0.85,
+        startVelocity: 70,
+        scalar: 1.1,
+        decay: 0.93,
+      })
+    }, delay)
+  }
+
+  // Phase 1: opening salvo — rapid side cannons
+  sideBurst('left',  0)
+  sideBurst('right', 60)
+  sideBurst('left',  120)
+  sideBurst('right', 180)
+  sideBurst('left',  240)
+  sideBurst('right', 300)
+  sideBurst('left',  360)
+  sideBurst('right', 420)
+
+  // Phase 2: massive center explosion
+  setTimeout(() => {
+    confetti({
+      particleCount: Math.round(600 * scale),
+      spread: 130,
+      origin: { x: 0.5, y: 0.25 },
+      colors,
+      ticks: 500,
+      gravity: 0.65,
+      startVelocity: 55,
+      scalar: 1.4,
+      drift: 0,
+    })
+  }, 500)
+
+  // Phase 3: top-corner waterfalls
+  setTimeout(() => {
+    confetti({ particleCount: Math.round(250 * scale), angle: 75, spread: 40, origin: { x: 0.05, y: 0 }, colors, ticks: 450, gravity: 1.1, startVelocity: 45, scalar: 1.0 })
+  }, 700)
+  setTimeout(() => {
+    confetti({ particleCount: Math.round(250 * scale), angle: 105, spread: 40, origin: { x: 0.95, y: 0 }, colors, ticks: 450, gravity: 1.1, startVelocity: 45, scalar: 1.0 })
+  }, 820)
+
+  // Phase 4: second center burst
+  setTimeout(() => {
+    confetti({
+      particleCount: Math.round(350 * scale),
+      spread: 100,
+      origin: { x: 0.5, y: 0.4 },
+      colors,
+      ticks: 380,
+      gravity: 0.9,
+      startVelocity: 42,
+      scalar: 1.2,
+    })
+  }, 1100)
+
+  // Phase 5: sustained side cannons
+  sideBurst('left',  1400, 150)
+  sideBurst('right', 1500, 150)
+  sideBurst('left',  1600, 120)
+  sideBurst('right', 1700, 120)
+
+  // Phase 6: grand finale shower
+  setTimeout(() => {
+    confetti({
+      particleCount: Math.round(500 * scale),
+      spread: 160,
+      origin: { x: 0.5, y: 0.3 },
+      colors,
+      ticks: 350,
+      gravity: 1.1,
+      startVelocity: 38,
+      scalar: 1.0,
+      decay: 0.91,
+    })
+  }, 2000)
 }
 
 // ── Tier dispatch ──────────────────────────────────────────────────────────
@@ -241,7 +333,7 @@ function fireAllDone(tierId, isFreeXP) {
 
   // Center
   confetti({
-    particleCount: Math.round(100 * scale),
+    particleCount: Math.round(200 * scale),
     spread: 70,
     origin: { y: 0.4 },
     colors,
@@ -252,7 +344,7 @@ function fireAllDone(tierId, isFreeXP) {
   // Left
   setTimeout(() => {
     confetti({
-      particleCount: Math.round(60 * scale),
+      particleCount: Math.round(120 * scale),
       angle: 60,
       spread: 55,
       origin: { x: 0, y: 0.5 },
@@ -263,7 +355,7 @@ function fireAllDone(tierId, isFreeXP) {
   // Right
   setTimeout(() => {
     confetti({
-      particleCount: Math.round(60 * scale),
+      particleCount: Math.round(120 * scale),
       angle: 120,
       spread: 55,
       origin: { x: 1, y: 0.5 },
@@ -276,7 +368,7 @@ function fireAllDone(tierId, isFreeXP) {
   if (scale >= 1.4) {
     setTimeout(() => {
       confetti({
-        particleCount: Math.round(80 * scale),
+        particleCount: Math.round(160 * scale),
         spread: 100,
         origin: { x: 0.5, y: 0.2 },
         colors,
@@ -290,7 +382,7 @@ function fireAllDone(tierId, isFreeXP) {
 }
 
 // ── Component ─────────────────────────────────────────────────────────────
-// confetti: { mode: 'normal'|'allDone', id, isFreeXP, multiplierTierId }
+// confetti: { mode: 'normal'|'allDone'|'rankUp', id, isFreeXP, multiplierTierId, tierColor }
 export default function Confetti({ confetti }) {
   useEffect(() => {
     if (!confetti) return
@@ -298,8 +390,9 @@ export default function Confetti({ confetti }) {
     const isFreeXP = !!confetti.isFreeXP
     const tierId = confetti.multiplierTierId || 'common'
 
-    if (confetti.mode === 'allDone') fireAllDone(tierId, isFreeXP)
-    else                             fireTier(tierId, isFreeXP)
+    if (confetti.mode === 'rankUp')   fireRankUpConfetti(confetti.tierColor || '#FFD700', !!confetti.isMajor)
+    else if (confetti.mode === 'allDone') fireAllDone(tierId, isFreeXP)
+    else                                  fireTier(tierId, isFreeXP)
   }, [confetti])
 
   return null

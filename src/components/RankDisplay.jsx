@@ -1,6 +1,8 @@
+import { useRef, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import useTaskStore from '@/store/tasks'
-import { getRankById, getXPProgress, RANK_COLORS } from '@/utils/progression'
+import { getRankById, getNextRank, getXPProgress, RANK_COLORS } from '@/utils/progression'
+import { playRankProximityTone } from '@/hooks/useSound'
 
 const SIZE = 88
 const STROKE = 5
@@ -345,9 +347,11 @@ function LockIcon({ color }) {
 export default function RankDisplay() {
   const progression = useTaskStore(s => s.progression)
   const theme = useTaskStore(s => s.settings.theme)
+  const soundEnabled = useTaskStore(s => s.settings.soundEnabled)
   const isDark = theme === 'dark'
 
   const rank = getRankById(progression.currentRankId)
+  const nextRank = getNextRank(progression.currentRankId)
   const progress = getXPProgress(progression.currentXP, progression.currentRankId)
   const tierColor = RANK_COLORS[rank.tier]?.primary || '#888'
   const trackColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'
@@ -357,8 +361,51 @@ export default function RankDisplay() {
   const showCapLock = progression.bleedCapHitToday && !progression.boardClearedToday
   const lockColor = isDark ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.30)'
 
+  // ── Rank Proximity Glow ─────────────────────────────────────────────────────
+  // When within 5% of next rank, the arc breathes in the color of the next tier.
+  // Intensity scales: ≥95% subtle → ≥98% visible → ≥99% hard to ignore.
+  // Only a positive anticipation signal — never fires during bleed demotions.
+  const proximityPct = nextRank && rank.xpToNext > 0
+    ? (progression.currentXP - rank.xpRequired) / rank.xpToNext * 100
+    : 100
+  const glowActive = !!nextRank && proximityPct >= 95 && !progression.bleedCapHitToday
+  const nextTierColor = nextRank ? (RANK_COLORS[nextRank.tier]?.primary || tierColor) : tierColor
+
+  // Glow intensity: 0.4 at 95%, 0.7 at 98%, 1.0 at 99%+
+  const glowIntensity = glowActive
+    ? proximityPct >= 99 ? 1.0 : proximityPct >= 98 ? 0.7 : 0.4
+    : 0
+
+  // Play the proximity tone once when glow first activates
+  const prevGlowRef = useRef(false)
+  useEffect(() => {
+    if (glowActive && !prevGlowRef.current && soundEnabled) {
+      playRankProximityTone()
+    }
+    prevGlowRef.current = glowActive
+  }, [glowActive, soundEnabled])
+
+  // Pulse animation: slow breathing ~2.5s cycle. Not urgent, attention-catching.
+  // Max glow opacity/width scales with intensity (0.4 / 0.7 / 1.0)
+  const maxGlowOpacity = glowActive ? 0.3 + glowIntensity * 0.55 : 0
+  const maxStrokeExtra = glowActive ? glowIntensity * 2.5 : 0
+  const arcColor = glowActive ? nextTierColor : tierColor
+
+  // CSS keyframe animation name is unique per color so React can swap it cleanly
+  const pulseAnimName = `rankGlow_${nextTierColor.replace('#', '')}`
+
   return (
     <div className="relative" style={{ width: SIZE, height: SIZE }}>
+      {/* Inject keyframe animation for the glow pulse */}
+      {glowActive && (
+        <style>{`
+          @keyframes ${pulseAnimName} {
+            0%, 100% { opacity: 0.15; stroke-width: ${STROKE}px; }
+            50%       { opacity: ${maxGlowOpacity}; stroke-width: ${STROKE + maxStrokeExtra}px; }
+          }
+        `}</style>
+      )}
+
       {/* Circular XP progress ring */}
       <svg
         width={SIZE}
@@ -375,13 +422,35 @@ export default function RankDisplay() {
           stroke={trackColor}
           strokeWidth={STROKE}
         />
-        {/* Progress arc */}
+
+        {/* Glow pulse overlay — separate circle, animates opacity+strokeWidth via CSS */}
+        {glowActive && (
+          <circle
+            cx={SIZE / 2}
+            cy={SIZE / 2}
+            r={RADIUS}
+            fill="none"
+            stroke={nextTierColor}
+            strokeLinecap="round"
+            strokeDasharray={CIRCUMFERENCE}
+            strokeDashoffset={offset}
+            style={{
+              transform: 'rotate(-90deg)',
+              transformOrigin: '50% 50%',
+              animation: `${pulseAnimName} 2.5s ease-in-out infinite`,
+              filter: `drop-shadow(0 0 6px ${nextTierColor})`,
+              transition: 'stroke-dashoffset 0.5s ease',
+            }}
+          />
+        )}
+
+        {/* Progress arc — main arc, always rendered, no glow animation */}
         <motion.circle
           cx={SIZE / 2}
           cy={SIZE / 2}
           r={RADIUS}
           fill="none"
-          stroke={tierColor}
+          stroke={arcColor}
           strokeWidth={STROKE}
           strokeLinecap="round"
           strokeDasharray={CIRCUMFERENCE}
@@ -391,7 +460,7 @@ export default function RankDisplay() {
           style={{
             transform: 'rotate(-90deg)',
             transformOrigin: '50% 50%',
-            filter: `drop-shadow(0 0 3px ${tierColor}88)`,
+            filter: `drop-shadow(0 0 3px ${arcColor}88)`,
           }}
         />
       </svg>

@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import useTaskStore from '@/store/tasks'
 import Counter from '@/components/Counter'
@@ -62,18 +63,33 @@ export default function TodayView() {
   const todayTasks = useTaskStore(s => s.todayTasks())
   const theme = useTaskStore(s => s.settings.theme)
   const isDark = theme === 'dark'
+  const boardClearedToday = useTaskStore(s => s.progression.boardClearedToday)
+  const setLastTaskMoment = useTaskStore(s => s.setLastTaskMoment)
+
+  // Detect Last Task Moment: exactly 1 task remaining, not in free XP bonus round
+  const activeTodayCount = todayTasks.filter(t => t.status === 'today').length
+  useEffect(() => {
+    const isLastTask = !boardClearedToday && activeTodayCount === 1
+    setLastTaskMoment(isLastTask)
+  }, [activeTodayCount, boardClearedToday])
 
   return (
     <div className="h-full flex flex-col">
-      {/* Header row: Counter left, RankDisplay right */}
-      <div className="flex items-center justify-between px-6 pt-4 pb-2">
-        <Counter />
-        <RankDisplay />
+      <div>
+        <div className="flex items-center justify-between px-6 pt-4 pb-2">
+          <Counter />
+          <RankDisplay />
+        </div>
+        <StreakMessage />
       </div>
 
-      <StreakMessage />
-
-      <div className="flex-1 overflow-y-auto">
+      <div
+        className="flex-1 overflow-y-auto"
+        style={{
+          paddingTop: 4,
+          paddingBottom: 4,
+        }}
+      >
         <SortableTaskList tasks={todayTasks} />
         {todayTasks.length === 0 && <EmptyState isDark={isDark} />}
       </div>

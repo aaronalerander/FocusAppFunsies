@@ -96,6 +96,11 @@ const SETTING_DEFAULTS = {
   bleed_cap_hit_today: false,  // boolean: daily cap has been reached
   bleed_active: true,          // boolean: false once board is cleared or cap is hit
   last_bleed_applied_at: null, // ISO timestamp: when the last bleed tick was applied
+
+  // ── Daily Board Modifier ──────────────────────────────────────
+  // Hidden loot probability seed for the day. Never exposed to the player.
+  // Seeded once at daily reset. 'standard' | 'warm' | 'hot'
+  daily_modifier_type: 'standard',
 }
 
 function initSettings() {
@@ -270,6 +275,11 @@ function checkDailyReset() {
     progressionUpdates.bleed_cap_hit_today = false
     progressionUpdates.bleed_active = true
     progressionUpdates.last_bleed_applied_at = resetTime
+
+    // Seed hidden daily modifier. Player never sees this.
+    // 60% standard / 30% warm / 10% hot
+    const modifierRoll = Math.random()
+    progressionUpdates.daily_modifier_type = modifierRoll < 0.6 ? 'standard' : modifierRoll < 0.9 ? 'warm' : 'hot'
 
     upsertSettings({ progressResetAt: resetTime, ...progressionUpdates })
   }
@@ -837,6 +847,7 @@ ipcMain.handle('progression:read', () => {
     dailyBleedTotal: settings.daily_bleed_total ?? 0,
     bleedCapHitToday: capHit,
     bleedActive: !boardCleared && !capHit,
+    dailyModifierType: settings.daily_modifier_type ?? 'standard',
   }
 })
 

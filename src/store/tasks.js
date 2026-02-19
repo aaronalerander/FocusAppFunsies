@@ -1,6 +1,12 @@
 import { create } from 'zustand'
 import { v4 as uuidv4 } from 'uuid'
-import { playCompletionSound, playTaskAdded } from '@/hooks/useSound'
+import {
+  playCompletionSoundByTier,
+  playTaskAdded,
+  playBleedTick,
+  playBleedCapHit,
+  playDailyReset,
+} from '@/hooks/useSound'
 import {
   calculateTaskXP,
   calculateTaskXPWithMultiplier,
@@ -39,6 +45,7 @@ const useTaskStore = create((set, get) => ({
     dailyBleedTotal: 0,
     bleedCapHitToday: false,
     bleedActive: true,
+    dailyModifierType: 'standard',
   },
   ui: {
     activeTab: 'today',
@@ -53,6 +60,7 @@ const useTaskStore = create((set, get) => ({
     rankUpAnimation: null,    // { fromRankId, toRankId, newSlots }
     slotMachine: null,        // { tier, value, color, label, xpAmount, taskText, taskId } | null
     pendingSlotMachineResolve: null,  // function | null — resolved when slot machine animation completes
+    lastTaskMoment: false,    // true when exactly 1 task remains on Today (not in free XP round)
   },
 
   // ── Selectors ──────────────────────────────────────────────────
@@ -147,6 +155,7 @@ const useTaskStore = create((set, get) => ({
             settings: { ...get().settings, ...(newSettings || {}) },
             progression: { ...get().progression, ...(newProgression || {}) },
           })
+          if (get().settings.soundEnabled) playDailyReset()
         })
       }
 
@@ -154,6 +163,7 @@ const useTaskStore = create((set, get) => ({
       // Updates XP and rank silently — no demotion animation per PRD spec.
       if (window.focusAPI.onBleedTick) {
         window.focusAPI.onBleedTick((data) => {
+          const prevCapHit = get().progression.bleedCapHitToday
           set(state => ({
             progression: {
               ...state.progression,
@@ -164,6 +174,11 @@ const useTaskStore = create((set, get) => ({
               bleedActive: data.bleedActive,
             }
           }))
+          // Sound: near-silent bleed awareness (coffee-shop inaudible)
+          if (get().settings.soundEnabled) {
+            if (data.capHit && !prevCapHit) playBleedCapHit()
+            else if (data.dailyBleedTotal > 0) playBleedTick()
+          }
         })
       }
 
@@ -240,7 +255,7 @@ const useTaskStore = create((set, get) => ({
       // Re-use immutable stored roll from previous completion
       multiplierRoll = getMultiplierTier(task.hidden_multiplier_tier)
     } else {
-      multiplierRoll = rollHiddenMultiplier()
+      multiplierRoll = rollHiddenMultiplier(get().progression.dailyModifierType)
     }
 
     const { tasksCompletedToday, streakCount, boardClearedToday } = get().progression
@@ -301,8 +316,8 @@ const useTaskStore = create((set, get) => ({
       const isAllDone = progress.allDone && progress.total > 0
       const mode = isAllDone ? 'allDone' : 'normal'
 
-      // Sound scales with tasks completed today, independent of confetti mode
-      if (get().settings.soundEnabled) playCompletionSound(progress.completed, isAllDone)
+      // Sound is tier-differentiated — Pavlovian conditioning layer
+      if (get().settings.soundEnabled) playCompletionSoundByTier(multiplierRoll.id, isAllDone)
 
       setTimeout(() => {
         set(state => ({ ui: { ...state.ui, confetti: { mode, id: Date.now(), isFreeXP: isFreeXPTask, multiplierTierId: multiplierRoll.id } } }))
@@ -410,7 +425,7 @@ const useTaskStore = create((set, get) => ({
       const isAllDone = progress.allDone && progress.total > 0
       const mode = isAllDone ? 'allDone' : 'normal'
 
-      if (get().settings.soundEnabled) playCompletionSound(progress.completed, isAllDone)
+      if (get().settings.soundEnabled) playCompletionSoundByTier(multiplierRoll.id, isAllDone)
 
       setTimeout(() => {
         set(state => ({ ui: { ...state.ui, confetti: { mode, id: Date.now(), isFreeXP: isFreeXPTask, multiplierTierId: multiplierRoll.id } } }))
@@ -578,6 +593,7 @@ const useTaskStore = create((set, get) => ({
   // ── UI actions ─────────────────────────────────────────────────
 
   setTab: (tab) => set(state => ({ ui: { ...state.ui, activeTab: tab } })),
+  setLastTaskMoment: (active) => set(state => ({ ui: { ...state.ui, lastTaskMoment: active } })),
   openSettings: () => set(state => ({ ui: { ...state.ui, isSettingsOpen: true } })),
   closeSettings: () => set(state => ({ ui: { ...state.ui, isSettingsOpen: false } })),
   confirmDelete: (id) => set(state => ({ ui: { ...state.ui, confirmDeleteId: id } })),

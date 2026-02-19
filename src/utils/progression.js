@@ -184,7 +184,40 @@ export const MULTIPLIER_TIERS = [
   { id: 'mythic',    label: 'Mythic',    value: 10.0, probability: 0.02, color: '#FF3030' },
 ]
 
-// Precomputed cumulative thresholds for weighted roll
+// ── Daily Board Modifier Distributions ──────────────────────────────────────
+// Hidden per-day loot probability seeds. Three day types assigned randomly at
+// reset. The player never sees these — they are felt, not known.
+//
+// Cumulative probability thresholds (roll r < threshold → that tier):
+//   Standard (60% of days): default odds
+//   Warm     (30% of days): moderately shifted toward higher tiers
+//   Hot      (10% of days): significantly shifted toward higher tiers
+
+const MODIFIER_DISTRIBUTIONS = {
+  standard: [
+    { id: 'common', threshold: 0.55 },
+    { id: 'rare',   threshold: 0.80 },
+    { id: 'epic',   threshold: 0.92 },
+    { id: 'legendary', threshold: 0.98 },
+    { id: 'mythic', threshold: 1.0 },
+  ],
+  warm: [
+    { id: 'common', threshold: 0.42 },
+    { id: 'rare',   threshold: 0.72 },
+    { id: 'epic',   threshold: 0.89 },
+    { id: 'legendary', threshold: 0.97 },
+    { id: 'mythic', threshold: 1.0 },
+  ],
+  hot: [
+    { id: 'common', threshold: 0.28 },
+    { id: 'rare',   threshold: 0.61 },
+    { id: 'epic',   threshold: 0.83 },
+    { id: 'legendary', threshold: 0.95 },
+    { id: 'mythic', threshold: 1.0 },
+  ],
+}
+
+// Precomputed cumulative thresholds for standard weighted roll (legacy fallback)
 const MULTIPLIER_THRESHOLDS = (() => {
   let acc = 0
   return MULTIPLIER_TIERS.map(t => { acc += t.probability; return { ...t, threshold: acc } })
@@ -192,11 +225,14 @@ const MULTIPLIER_THRESHOLDS = (() => {
 
 /**
  * Roll a hidden multiplier tier using weighted random selection.
+ * @param {string} [modifierType='standard'] - Daily board modifier: 'standard' | 'warm' | 'hot'
  * @returns {{ id: string, label: string, value: number, probability: number, color: string }}
  */
-export function rollHiddenMultiplier() {
+export function rollHiddenMultiplier(modifierType = 'standard') {
   const r = Math.random()
-  return MULTIPLIER_THRESHOLDS.find(t => r < t.threshold) ?? MULTIPLIER_TIERS[MULTIPLIER_TIERS.length - 1]
+  const distribution = MODIFIER_DISTRIBUTIONS[modifierType] ?? MODIFIER_DISTRIBUTIONS.standard
+  const hit = distribution.find(d => r < d.threshold) ?? distribution[distribution.length - 1]
+  return MULTIPLIER_TIERS.find(t => t.id === hit.id) ?? MULTIPLIER_TIERS[0]
 }
 
 /**

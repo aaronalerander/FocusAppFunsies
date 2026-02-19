@@ -101,6 +101,9 @@ export default function TaskItem({ task, dragHandleProps }) {
   const isDark = theme === 'dark'
   const isFreeXP = task.status === 'today' && freeXPTaskIds.includes(task.id)
   const accentColor = boardClearedToday ? GOLD : null
+  const lastTaskMoment = useTaskStore(s => s.ui.lastTaskMoment)
+  // Warm ambient glow on the single remaining card — neutral warm color, not tier-colored
+  const isLastTask = lastTaskMoment && task.status === 'today'
 
   const handleTagCommit = useCallback((tag) => {
     updateTaskTag(task.id, tag)
@@ -132,6 +135,10 @@ export default function TaskItem({ task, dragHandleProps }) {
           ? isDark ? 'bg-surface-dark' : 'bg-surface-light'
           : 'bg-transparent'
       } ${isFreeXP ? 'free-xp-glow' : ''}`}
+      style={{
+        boxShadow: isLastTask ? 'inset 0 0 0 1px rgba(255,215,160,0.35), 0 0 10px rgba(255,215,160,0.2)' : undefined,
+        transition: 'box-shadow 0.6s ease-in',
+      }}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       onContextMenu={(e) => {

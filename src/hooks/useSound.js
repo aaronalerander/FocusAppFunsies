@@ -207,7 +207,169 @@ export function playSlotResultMythic() {
   }
 }
 
-// ── Public API ──────────────────────────────────────────────────────────────
+// ── Tier-Differentiated Completion Sound ────────────────────────────────────
+// Plays after the slot machine resolves — a distinct confirmation chime that
+// scales with the tier. Uses the Tier1-5 chimes (not the slot sounds) so it
+// feels like a satisfying stamp of completion rather than a repeated echo.
+// isAllDone overrides to board-clear swell regardless of tier.
+export function playCompletionSoundByTier(tierId, isAllDone) {
+  try {
+    if (isAllDone) {
+      playTier5()
+      return
+    }
+    switch (tierId) {
+      case 'mythic':    playTier5(); break
+      case 'legendary': playTier4(); break
+      case 'epic':      playTier3(); break
+      case 'rare':      playTier2(); break
+      default:          playTier1(); break
+    }
+  } catch (err) {
+    console.warn('[useSound] completion tier sound error:', err)
+  }
+}
+
+// ── Last Task Moment — Ambient Hum ───────────────────────────────────────────
+// A barely-audible sustained tone that begins when exactly one task remains.
+// Present rather than prominent — the hum before something happens.
+
+let humOsc = null
+let humGain = null
+
+export function startLastTaskHum() {
+  try {
+    if (humOsc) return  // already running
+    const ac = getCtx()
+    const t = ac.currentTime
+
+    humGain = ac.createGain()
+    humGain.gain.setValueAtTime(0, t)
+    humGain.gain.linearRampToValueAtTime(0.018, t + 1.2)  // slow fade-in
+    humGain.connect(ac.destination)
+
+    humOsc = ac.createOscillator()
+    humOsc.type = 'sine'
+    humOsc.frequency.setValueAtTime(80, t)
+    humOsc.connect(humGain)
+    humOsc.start(t)
+  } catch (err) {
+    console.warn('[useSound] last task hum start error:', err)
+  }
+}
+
+export function stopLastTaskHum() {
+  try {
+    if (!humOsc || !humGain) return
+    const ac = getCtx()
+    const t = ac.currentTime
+    humGain.gain.setValueAtTime(humGain.gain.value, t)
+    humGain.gain.linearRampToValueAtTime(0.0001, t + 0.4)
+    const oscRef = humOsc
+    const gainRef = humGain
+    humOsc = null
+    humGain = null
+    setTimeout(() => {
+      try { oscRef.stop(); oscRef.disconnect() } catch (_) {}
+      try { gainRef.disconnect() } catch (_) {}
+    }, 450)
+  } catch (err) {
+    console.warn('[useSound] last task hum stop error:', err)
+  }
+}
+
+// ── Rank Proximity Tone ──────────────────────────────────────────────────────
+// Fired once when the rank proximity glow activates. Single soft rising tone,
+// barely audible — announces the glow without being attention-seeking.
+export function playRankProximityTone() {
+  try {
+    const ac = getCtx()
+    const t = ac.currentTime
+    tone(ac, C5, t,        0.20, 0.06)
+    tone(ac, E5, t + 0.12, 0.25, 0.05)
+  } catch (err) {
+    console.warn('[useSound] rank proximity tone error:', err)
+  }
+}
+
+// ── Bleed Tick ───────────────────────────────────────────────────────────────
+// Near-silent descending tick — awareness, not punishment.
+// Inaudible from a neighboring table at a coffee shop.
+export function playBleedTick() {
+  try {
+    const ac = getCtx()
+    const t = ac.currentTime
+    tone(ac, E5, t,        0.08, 0.025)
+    tone(ac, C5, t + 0.06, 0.09, 0.020)
+  } catch (err) {
+    console.warn('[useSound] bleed tick error:', err)
+  }
+}
+
+// ── Bleed Cap Hit ────────────────────────────────────────────────────────────
+// Single muted thud — closure, not celebration. Signals bleed has stopped.
+export function playBleedCapHit() {
+  try {
+    const ac = getCtx()
+    const t = ac.currentTime
+    tone(ac, 220, t,        0.15, 0.05, 'square')
+    tone(ac, 110, t + 0.04, 0.20, 0.04, 'square')
+  } catch (err) {
+    console.warn('[useSound] bleed cap hit error:', err)
+  }
+}
+
+// ── Daily Reset Chime ────────────────────────────────────────────────────────
+// Soft chime sequence — a new day starting, unhurried.
+export function playDailyReset() {
+  try {
+    const ac = getCtx()
+    const t = ac.currentTime
+    tone(ac, C5, t,        0.5, 0.10)
+    tone(ac, G5, t + 0.22, 0.55, 0.09)
+    tone(ac, C6, t + 0.50, 0.7, 0.08)
+    tone(ac, C6, t + 0.50, 0.9, 0.04, 'triangle')
+  } catch (err) {
+    console.warn('[useSound] daily reset error:', err)
+  }
+}
+
+// ── Rank Up Fanfare ───────────────────────────────────────────────────────────
+// Triumphal multi-layer fanfare — unmistakably bigger than any loot sound.
+// Sub-bass impact → rising arpeggio → chord swell → triumphant bell crown.
+export function playRankUp() {
+  try {
+    const ac = getCtx()
+    const t = ac.currentTime
+    // Deep impact thud
+    tone(ac, 55,  t,        0.20, 0.18, 'sawtooth')
+    tone(ac, 110, t + 0.02, 0.18, 0.14, 'sawtooth')
+    // Rising arpeggio — fast and heroic
+    tone(ac, C5,       t + 0.08, 0.35, 0.18)
+    tone(ac, E5,       t + 0.16, 0.38, 0.17)
+    tone(ac, G5,       t + 0.24, 0.40, 0.16)
+    tone(ac, C6,       t + 0.32, 0.45, 0.16)
+    tone(ac, E6,       t + 0.40, 0.50, 0.15)
+    tone(ac, C6 * 1.5, t + 0.48, 0.55, 0.13, 'triangle')
+    // Full chord swell
+    tone(ac, C5, t + 0.60, 1.40, 0.13)
+    tone(ac, E5, t + 0.60, 1.40, 0.12)
+    tone(ac, G5, t + 0.60, 1.40, 0.12)
+    tone(ac, C6, t + 0.60, 1.40, 0.12)
+    tone(ac, E6, t + 0.65, 1.20, 0.10, 'triangle')
+    // Second triumphant peak at ~1.2s
+    tone(ac, C6,       t + 1.15, 0.60, 0.14)
+    tone(ac, E6,       t + 1.23, 0.60, 0.13)
+    tone(ac, C6 * 1.5, t + 1.31, 0.70, 0.11, 'triangle')
+    // Final bell crown
+    tone(ac, C6 * 2,   t + 1.50, 0.80, 0.09, 'triangle')
+    tone(ac, E6 * 1.5, t + 1.60, 0.70, 0.07, 'triangle')
+  } catch (err) {
+    console.warn('[useSound] rank up error:', err)
+  }
+}
+
+// ── Public API (legacy — kept for backward compatibility) ────────────────────
 // completedToday: number of tasks completed so far today (including this one)
 // isAllDone:      true if this completion clears the entire today list
 export function playCompletionSound(completedToday, isAllDone) {
