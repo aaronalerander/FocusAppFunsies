@@ -220,6 +220,11 @@ const useTaskStore = create((set, get) => ({
 
     const statusCount = tasks.filter(t => t.status === targetStatus).length
 
+    // 10 XP per task created — meaningful but completion (100+ XP × streak × multiplier)
+    // remains the primary progression driver. Follows the "entry fee" pattern in game
+    // design: rewarding intent without diminishing the completion reward.
+    const CREATION_XP = 10
+
     const task = {
       id: uuidv4(),
       text: text.trim(),
@@ -228,12 +233,42 @@ const useTaskStore = create((set, get) => ({
       completedAt: null,
       movedToLaterAt: null,
       order: statusCount,
-      tag: null
+      tag: null,
+      creation_xp_awarded: CREATION_XP,
     }
 
     set(state => ({ tasks: [...state.tasks, task] }))
     await window.focusAPI.tasks.add(task)
     if (get().settings.soundEnabled) playTaskAdded()
+
+    // Award small creation XP — silent (no slot/animation) unless it triggers a rank-up
+    try {
+      const result = await window.focusAPI.progression.awardCreationXP({ xpAmount: CREATION_XP })
+      set(state => ({
+        progression: {
+          ...state.progression,
+          currentXP: result.newXP,
+          currentRankId: result.newRankId,
+        }
+      }))
+
+      if (result.rankedUp) {
+        const newRank = getRankById(result.newRankId)
+        const oldRank = getRankById(result.previousRankId)
+        const newSlots = newRank.taskSlots > oldRank.taskSlots ? newRank.taskSlots : null
+        setTimeout(() => {
+          set(state => ({
+            ui: { ...state.ui, rankUpAnimation: {
+              fromRankId: result.previousRankId,
+              toRankId: result.newRankId,
+              newSlots
+            }}
+          }))
+        }, 600)
+      }
+    } catch (err) {
+      console.warn('[addTask] creation XP award failed:', err)
+    }
 
     // After first board clear of the day, all new Today tasks are free XP
     if (targetStatus === 'today' && get().progression.boardClearedToday) {
@@ -566,10 +601,16 @@ const useTaskStore = create((set, get) => ({
     }))
     await window.focusAPI.tasks.delete(id)
 
-    // If the task was completed and has XP, deduct it
-    if (task?.status === 'done' && task?.final_xp_awarded > 0) {
+    // Deduct all XP this task contributed:
+    //   creation_xp_awarded — always present (awarded when the task was created)
+    //   final_xp_awarded    — only present if the task was completed
+    const creationXP = task?.creation_xp_awarded ?? 0
+    const completionXP = task?.status === 'done' ? (task?.final_xp_awarded ?? 0) : 0
+    const totalDeduct = creationXP + completionXP
+
+    if (totalDeduct > 0) {
       try {
-        const result = await window.focusAPI.progression.deductXP({ xpAmount: task.final_xp_awarded })
+        const result = await window.focusAPI.progression.deductXP({ xpAmount: totalDeduct })
         set(state => ({
           progression: {
             ...state.progression,
@@ -577,7 +618,7 @@ const useTaskStore = create((set, get) => ({
             currentRankId: result.newRankId,
           }
         }))
-        get().showToast(`-${task.final_xp_awarded} XP removed`, 'info')
+        get().showToast(`-${totalDeduct} XP removed`, 'info')
       } catch (err) {
         console.error('[deleteTask] XP deduction failed:', err)
       }

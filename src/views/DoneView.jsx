@@ -4,7 +4,7 @@ import useTaskStore from '@/store/tasks'
 import TaskItem from '@/components/TaskItem'
 import { getLogicalToday, getLogicalDay } from '@/utils/dateUtils'
 
-function XPBadge({ xp, isDark }) {
+function XPBadge({ xp }) {
   const isNeg = xp < 0
   const label = isNeg ? `${xp} XP` : `+${xp} XP`
   return (
@@ -14,7 +14,7 @@ function XPBadge({ xp, isDark }) {
         fontWeight: 700,
         fontVariantNumeric: 'tabular-nums',
         letterSpacing: '-0.3px',
-        color: isNeg ? '#f87171' : isDark ? 'rgba(255,255,255,0.38)' : 'rgba(0,0,0,0.32)',
+        color: isNeg ? '#f87171' : 'rgba(255,255,255,0.38)',
       }}
     >
       {label}
@@ -22,15 +22,11 @@ function XPBadge({ xp, isDark }) {
   )
 }
 
-function DeleteButton({ onClick, isDark }) {
+function DeleteButton({ onClick }) {
   return (
     <button
       onClick={onClick}
-      className={`flex-shrink-0 p-1.5 rounded-lg transition-colors ${
-        isDark
-          ? 'text-muted-dark hover:text-red-400 hover:bg-red-400/10'
-          : 'text-muted-light hover:text-red-500 hover:bg-red-500/10'
-      }`}
+      className="flex-shrink-0 p-1.5 rounded-lg transition-colors text-muted-dark hover:text-red-400 hover:bg-red-400/10"
     >
       <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
         <path d="M2 3.5h10M5.5 3.5V2.5h3V3.5M5 6v4.5M9 6v4.5M3.5 3.5l.5 8h6l.5-8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
@@ -41,7 +37,7 @@ function DeleteButton({ onClick, isDark }) {
 
 const PAGE_SIZE = 20
 
-function EmptyState({ isDark }) {
+function EmptyState() {
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -49,7 +45,7 @@ function EmptyState({ isDark }) {
       transition={{ delay: 0.2 }}
       className="flex flex-col items-center justify-center py-16 px-6"
     >
-      <p className={`text-sm font-sans text-center ${isDark ? 'text-muted-dark' : 'text-muted-light'} opacity-50`}>
+      <p className="text-sm font-sans text-center text-muted-dark opacity-50">
         Your trophy room is empty.
         <br />
         Complete a task to see it here.
@@ -77,21 +73,18 @@ function formatDayHeader(dateStr, resetHourUTC) {
   })
 }
 
-function DaySection({ dateStr, tasks, isDark, resetHourUTC, developerMode, onDelete, todayBleed, logicalToday }) {
+function DaySection({ dateStr, tasks, resetHourUTC, developerMode, onDelete, todayBleed, logicalToday }) {
   const [isOpen, setIsOpen] = useState(false)
 
   const earnedXP = tasks.reduce((sum, t) => sum + (t.final_xp_awarded || 0), 0)
-  // Bleed is only tracked for the current logical day
   const bleed = dateStr === logicalToday ? (todayBleed || 0) : 0
   const xpDelta = earnedXP - bleed
 
   return (
-    <div className={`border-b ${isDark ? 'border-border-dark' : 'border-border-light'}`}>
+    <div className="border-b border-border-dark">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className={`w-full flex items-center justify-between px-6 py-3 text-left transition-colors ${
-          isDark ? 'hover:bg-surface-dark' : 'hover:bg-surface-light'
-        }`}
+        className="w-full flex items-center justify-between px-6 py-3 text-left transition-colors hover:bg-surface-dark"
       >
         <div className="flex items-center gap-3">
           <motion.svg
@@ -101,17 +94,17 @@ function DaySection({ dateStr, tasks, isDark, resetHourUTC, developerMode, onDel
             fill="none"
             animate={{ rotate: isOpen ? 90 : 0 }}
             transition={{ duration: 0.15 }}
-            className={isDark ? 'text-muted-dark' : 'text-muted-light'}
+            className="text-muted-dark"
           >
             <path d="M4 2l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
           </motion.svg>
-          <span className={`text-sm font-sans font-medium ${isDark ? 'text-text-dark' : 'text-text-light'}`}>
+          <span className="text-sm font-sans font-medium text-text-dark">
             {formatDayHeader(dateStr, resetHourUTC)}
           </span>
         </div>
         <div className="flex items-center gap-3">
-          <XPBadge xp={xpDelta} isDark={isDark} />
-          <span className={`text-xs font-sans tabular-nums ${isDark ? 'text-muted-dark' : 'text-muted-light'} opacity-60`}>
+          <XPBadge xp={xpDelta} />
+          <span className="text-xs font-sans tabular-nums text-muted-dark opacity-60">
             {tasks.length} task{tasks.length !== 1 ? 's' : ''}
           </span>
         </div>
@@ -133,7 +126,7 @@ function DaySection({ dateStr, tasks, isDark, resetHourUTC, developerMode, onDel
                 </div>
                 {developerMode && (
                   <div className="absolute right-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <DeleteButton onClick={() => onDelete(task.id)} isDark={isDark} />
+                    <DeleteButton onClick={() => onDelete(task.id)} />
                   </div>
                 )}
               </div>
@@ -148,16 +141,13 @@ function DaySection({ dateStr, tasks, isDark, resetHourUTC, developerMode, onDel
 export default function DoneView() {
   const doneTasks = useTaskStore(s => s.doneTasks())
   const lifetimeCompleted = useTaskStore(s => s.settings.lifetimeCompleted)
-  const theme = useTaskStore(s => s.settings.theme)
   const dailyResetHourUTC = useTaskStore(s => s.settings.dailyResetHourUTC) ?? 10
   const developerMode = useTaskStore(s => s.settings.developerMode ?? false)
   const dailyBleedTotal = useTaskStore(s => s.progression.dailyBleedTotal || 0)
   const deleteTask = useTaskStore(s => s.deleteTask)
-  const isDark = theme === 'dark'
   const logicalToday = getLogicalToday(dailyResetHourUTC)
   const [page, setPage] = useState(1)
 
-  // Group tasks by completion date (using logical day boundary)
   const groupedByDay = useMemo(() => {
     const groups = []
     const map = new Map()
@@ -175,18 +165,14 @@ export default function DoneView() {
     return groups
   }, [doneTasks, dailyResetHourUTC])
 
-  // Paginate the day groups
   const visibleGroups = groupedByDay.slice(0, page * PAGE_SIZE)
   const hasMore = visibleGroups.length < groupedByDay.length
 
   return (
     <div className="h-full flex flex-col pt-4">
-      {/* Lifetime counter */}
       {lifetimeCompleted > 0 && (
         <div className="px-6 pb-4">
-          <p className={`text-xs font-sans tracking-widest uppercase ${
-            isDark ? 'text-muted-dark' : 'text-muted-light'
-          } opacity-50`}>
+          <p className="text-xs font-sans tracking-widest uppercase text-muted-dark opacity-50">
             {lifetimeCompleted} task{lifetimeCompleted !== 1 ? 's' : ''} completed all-time
           </p>
         </div>
@@ -198,7 +184,6 @@ export default function DoneView() {
             key={group.date}
             dateStr={group.date}
             tasks={group.tasks}
-            isDark={isDark}
             resetHourUTC={dailyResetHourUTC}
             developerMode={developerMode}
             onDelete={deleteTask}
@@ -211,18 +196,14 @@ export default function DoneView() {
           <div className="flex justify-center py-4">
             <button
               onClick={() => setPage(p => p + 1)}
-              className={`text-xs font-sans px-4 py-2 rounded-lg transition-colors ${
-                isDark
-                  ? 'text-muted-dark hover:text-text-dark hover:bg-surface-dark'
-                  : 'text-muted-light hover:text-text-light hover:bg-surface-light'
-              }`}
+              className="text-xs font-sans px-4 py-2 rounded-lg transition-colors text-muted-dark hover:text-text-dark hover:bg-surface-dark"
             >
               Load more
             </button>
           </div>
         )}
 
-        {doneTasks.length === 0 && <EmptyState isDark={isDark} />}
+        {doneTasks.length === 0 && <EmptyState />}
       </div>
     </div>
   )

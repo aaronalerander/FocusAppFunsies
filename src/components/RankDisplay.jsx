@@ -454,13 +454,19 @@ export default function RankDisplay() {
   const lockColor = isDark ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.30)'
 
   // ── Daily XP delta ────────────────────────────────────────────────────────
-  // Sum final_xp_awarded for all tasks completed since today's reset boundary.
+  // Sum completion XP + creation XP for all tasks touched since today's reset.
   const dailyXPEarned = (() => {
     const resetHour = settings.dailyResetHourUTC ?? 10
     const resetBoundary = getResetTimestamp(resetHour)
-    return tasks
+    // Completion XP: done tasks completed today
+    const completionXP = tasks
       .filter(t => t.status === 'done' && t.completedAt && t.completedAt > resetBoundary)
       .reduce((sum, t) => sum + (t.final_xp_awarded || 0), 0)
+    // Creation XP: all tasks created today (any status)
+    const creationXP = tasks
+      .filter(t => t.createdAt && t.createdAt > resetBoundary)
+      .reduce((sum, t) => sum + (t.creation_xp_awarded || 0), 0)
+    return completionXP + creationXP
   })()
 
   // Net delta also accounts for bleed lost today
@@ -587,20 +593,22 @@ export default function RankDisplay() {
         />
       </svg>
 
-      {/* Liquid-glass disc behind the center content */}
+      {/* Liquid-glass disc behind the center content — tinted with rank color */}
       <div
         style={{
           position: 'absolute',
           inset: STROKE + 2,
           borderRadius: '50%',
+          // Specular highlight at top-left stays white for glass feel;
+          // mid and edge are tinted with tierColor at low opacity.
           background: isDark
-            ? 'radial-gradient(circle at 38% 32%, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.03) 60%, rgba(0,0,0,0.18) 100%)'
-            : 'radial-gradient(circle at 38% 32%, rgba(255,255,255,0.72) 0%, rgba(255,255,255,0.52) 60%, rgba(200,200,220,0.28) 100%)',
-          backdropFilter: 'blur(12px) saturate(1.4)',
-          WebkitBackdropFilter: 'blur(12px) saturate(1.4)',
+            ? `radial-gradient(circle at 38% 32%, rgba(255,255,255,0.10) 0%, ${tierColor}22 45%, ${tierColor}18 100%)`
+            : `radial-gradient(circle at 38% 32%, rgba(255,255,255,0.82) 0%, ${tierColor}28 55%, ${tierColor}20 100%)`,
+          backdropFilter: 'blur(12px) saturate(1.5)',
+          WebkitBackdropFilter: 'blur(12px) saturate(1.5)',
           boxShadow: isDark
-            ? 'inset 0 1px 0 rgba(255,255,255,0.10), inset 0 -1px 0 rgba(0,0,0,0.20)'
-            : 'inset 0 1px 0 rgba(255,255,255,0.80), inset 0 -1px 0 rgba(0,0,0,0.06)',
+            ? `inset 0 1px 0 rgba(255,255,255,0.12), inset 0 -1px 0 rgba(0,0,0,0.22), inset 0 0 12px ${tierColor}18`
+            : `inset 0 1px 0 rgba(255,255,255,0.90), inset 0 -1px 0 rgba(0,0,0,0.06), inset 0 0 10px ${tierColor}14`,
         }}
       />
 

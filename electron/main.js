@@ -65,6 +65,9 @@ try { db.exec('ALTER TABLE tasks ADD COLUMN hidden_multiplier_tier TEXT') } catc
 try { db.exec('ALTER TABLE tasks ADD COLUMN hidden_multiplier_value REAL') } catch (_) {}
 try { db.exec('ALTER TABLE tasks ADD COLUMN final_xp_awarded INTEGER') } catch (_) {}
 
+// Small XP awarded when a task is created — deducted on delete at any time
+try { db.exec('ALTER TABLE tasks ADD COLUMN creation_xp_awarded INTEGER DEFAULT 0') } catch (_) {}
+
 // ── Default settings ──────────────────────────────────────────
 
 const SETTING_DEFAULTS = {
@@ -775,15 +778,15 @@ ipcMain.handle('tasks:write', (_e, tasks) => {
 
 ipcMain.handle('task:add', (_e, task) => {
   db.prepare(`
-    INSERT INTO tasks (id, text, status, createdAt, completedAt, movedToLaterAt, "order", tag)
-    VALUES (@id, @text, @status, @createdAt, @completedAt, @movedToLaterAt, @order, @tag)
-  `).run({ tag: null, ...task })
+    INSERT INTO tasks (id, text, status, createdAt, completedAt, movedToLaterAt, "order", tag, creation_xp_awarded)
+    VALUES (@id, @text, @status, @createdAt, @completedAt, @movedToLaterAt, @order, @tag, @creation_xp_awarded)
+  `).run({ tag: null, creation_xp_awarded: 0, ...task })
   return { success: true }
 })
 
 ipcMain.handle('task:update', (_e, { id, changes }) => {
   const allowed = ['text', 'status', 'completedAt', 'movedToLaterAt', 'order', 'tag',
-    'hidden_multiplier_tier', 'hidden_multiplier_value', 'final_xp_awarded']
+    'hidden_multiplier_tier', 'hidden_multiplier_value', 'final_xp_awarded', 'creation_xp_awarded']
   const cols = Object.keys(changes).filter(k => allowed.includes(k))
   if (cols.length === 0) return { success: true }
 
@@ -885,6 +888,24 @@ ipcMain.handle('progression:awardXP', (_e, { xpAmount, tasksCompletedToday }) =>
     currentXP: newXP,
     currentRankId: newRank.id,
     tasksCompletedToday,
+  })
+
+  return { newXP, newRankId: newRank.id, rankedUp, previousRankId: oldRankId }
+})
+
+// Small XP for task creation — no slot/animation, but rank-up is possible.
+// Returns same shape as awardXP so the store can handle rank-ups identically.
+ipcMain.handle('progression:awardCreationXP', (_e, { xpAmount }) => {
+  const settings = readSettings()
+  const oldXP = settings.currentXP ?? 0
+  const oldRankId = settings.currentRankId ?? 'bronze_4'
+  const newXP = oldXP + xpAmount
+  const newRank = getRankForXP(newXP)
+  const rankedUp = newRank.id !== oldRankId
+
+  upsertSettings({
+    currentXP: newXP,
+    currentRankId: newRank.id,
   })
 
   return { newXP, newRankId: newRank.id, rankedUp, previousRankId: oldRankId }

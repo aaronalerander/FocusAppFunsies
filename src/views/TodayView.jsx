@@ -8,7 +8,6 @@ import SortableTaskList from '@/components/SortableTaskList'
 
 function StreakMessage() {
   const streakMessage = useTaskStore(s => s.ui.streakMessage)
-  const theme = useTaskStore(s => s.settings.theme)
   const boardClearedToday = useTaskStore(s => s.progression.boardClearedToday)
 
   const messages = {
@@ -39,7 +38,7 @@ function StreakMessage() {
   )
 }
 
-function EmptyState({ isDark }) {
+function EmptyState() {
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -47,10 +46,8 @@ function EmptyState({ isDark }) {
       transition={{ delay: 0.2 }}
       className="flex flex-col items-center justify-center py-16 px-6"
     >
-      <div className={`w-12 h-12 rounded-full border-2 mb-4 ${
-        isDark ? 'border-border-dark' : 'border-border-light'
-      }`} />
-      <p className={`text-sm font-sans text-center ${isDark ? 'text-muted-dark' : 'text-muted-light'} opacity-50`}>
+      <div className="w-12 h-12 rounded-full border-2 mb-4 border-border-dark" />
+      <p className="text-sm font-sans text-center text-muted-dark opacity-50">
         Nothing for today yet.
         <br />
         Add a task below.
@@ -61,12 +58,9 @@ function EmptyState({ isDark }) {
 
 export default function TodayView() {
   const todayTasks = useTaskStore(s => s.todayTasks())
-  const theme = useTaskStore(s => s.settings.theme)
-  const isDark = theme === 'dark'
   const boardClearedToday = useTaskStore(s => s.progression.boardClearedToday)
   const setLastTaskMoment = useTaskStore(s => s.setLastTaskMoment)
 
-  // Detect Last Task Moment: exactly 1 task remaining, not in free XP bonus round
   const activeTodayCount = todayTasks.filter(t => t.status === 'today').length
   useEffect(() => {
     const isLastTask = !boardClearedToday && activeTodayCount === 1
@@ -83,15 +77,9 @@ export default function TodayView() {
         <StreakMessage />
       </div>
 
-      <div
-        className="flex-1 overflow-y-auto"
-        style={{
-          paddingTop: 4,
-          paddingBottom: 4,
-        }}
-      >
+      <div className="flex-1 overflow-y-auto" style={{ paddingTop: 4, paddingBottom: 4 }}>
         <SortableTaskList tasks={todayTasks} />
-        {todayTasks.length === 0 && <EmptyState isDark={isDark} />}
+        {todayTasks.length === 0 && <EmptyState />}
       </div>
 
       <TaskInput />

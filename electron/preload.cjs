@@ -29,6 +29,7 @@ contextBridge.exposeInMainWorld('focusAPI', {
   progression: {
     read: () => ipcRenderer.invoke('progression:read'),
     awardXP: (data) => ipcRenderer.invoke('progression:awardXP', data),
+    awardCreationXP: (data) => ipcRenderer.invoke('progression:awardCreationXP', data),
     boardCleared: () => ipcRenderer.invoke('progression:boardCleared'),
     addFreeXPTask: (taskId) => ipcRenderer.invoke('progression:addFreeXPTask', taskId),
     removeFreeXPTask: (taskId) => ipcRenderer.invoke('progression:removeFreeXPTask', taskId),

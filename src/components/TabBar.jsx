@@ -13,13 +13,11 @@ export default function TabBar() {
   const activeTab = useTaskStore(s => s.ui.activeTab)
   const setTab = useTaskStore(s => s.setTab)
   const openSettings = useTaskStore(s => s.openSettings)
-  const theme = useTaskStore(s => s.settings.theme)
   const tasks = useTaskStore(s => s.tasks)
   const boardClearedToday = useTaskStore(s => s.progression.boardClearedToday)
   const dailyResetHourUTC = useTaskStore(s => s.settings.dailyResetHourUTC) ?? 10
   const lifetimeCompleted = useTaskStore(s => s.settings.lifetimeCompleted) ?? 0
 
-  const isDark = theme === 'dark'
   const accentColor = boardClearedToday ? GOLD : null
 
   const getCounts = (tabId) => {
@@ -32,17 +30,9 @@ export default function TabBar() {
   }
 
   return (
-    <div
-      className={`flex items-center justify-between px-6 pt-10 pb-4 drag-region ${
-        isDark ? 'border-border-dark' : 'border-border-light'
-      }`}
-    >
+    <div className="flex items-center justify-between px-6 pt-10 pb-4 drag-region border-border-dark">
       {/* App name */}
-      <span
-        className={`text-xs font-sans tracking-widest uppercase no-drag select-none ${
-          isDark ? 'text-muted-dark opacity-50' : 'text-muted-light opacity-50'
-        }`}
-      >
+      <span className="text-xs font-sans tracking-widest uppercase no-drag select-none text-muted-dark opacity-50">
         focus
       </span>
 
@@ -56,9 +46,7 @@ export default function TabBar() {
               key={tab.id}
               onClick={() => setTab(tab.id)}
               className={`relative flex items-center gap-1.5 text-sm font-sans font-medium tracking-wide pb-1 transition-colors duration-150 no-drag ${
-                isActive
-                  ? isDark ? 'text-text-dark' : 'text-text-light'
-                  : isDark ? 'text-muted-dark hover:text-text-dark' : 'text-muted-light hover:text-text-light'
+                isActive ? 'text-text-dark' : 'text-muted-dark hover:text-text-dark'
               }`}
             >
               {tab.label}
@@ -68,9 +56,7 @@ export default function TabBar() {
                   initial={{ scale: 0.8, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
                   className={`text-xs font-tabular ${
-                    isActive
-                      ? accentColor ? '' : 'text-accent'
-                      : isDark ? 'text-muted-dark' : 'text-muted-light'
+                    isActive ? (accentColor ? '' : 'text-accent') : 'text-muted-dark'
                   }`}
                   style={isActive && accentColor ? { color: accentColor } : undefined}
                 >
@@ -93,11 +79,7 @@ export default function TabBar() {
       {/* Settings gear */}
       <button
         onClick={openSettings}
-        className={`no-drag p-1 rounded-md transition-colors duration-150 ${
-          isDark
-            ? 'text-muted-dark hover:text-text-dark'
-            : 'text-muted-light hover:text-text-light'
-        }`}
+        className="no-drag p-1 rounded-md transition-colors duration-150 text-muted-dark hover:text-text-dark"
       >
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path

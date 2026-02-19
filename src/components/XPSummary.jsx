@@ -27,7 +27,6 @@ function AnimatedNumber({ value, duration = 1000 }) {
   const [displayed, setDisplayed] = useState(0)
 
   useEffect(() => {
-    let start = 0
     const startTime = performance.now()
     const animate = (now) => {
       const elapsed = now - startTime
@@ -45,8 +44,6 @@ function AnimatedNumber({ value, duration = 1000 }) {
 export default function XPSummary() {
   const xpSummary = useTaskStore(s => s.ui.xpSummary)
   const dismissXPSummary = useTaskStore(s => s.dismissXPSummary)
-  const theme = useTaskStore(s => s.settings.theme)
-  const isDark = theme === 'dark'
 
   if (!xpSummary) return null
 
@@ -65,17 +62,13 @@ export default function XPSummary() {
       >
         {/* Backdrop */}
         <motion.div
-          className={`absolute inset-0 ${isDark ? 'bg-black/70' : 'bg-black/50'} backdrop-blur-sm`}
+          className="absolute inset-0 bg-black/70 backdrop-blur-sm"
           onClick={dismissXPSummary}
         />
 
         {/* Card */}
         <motion.div
-          className={`relative z-10 w-[320px] rounded-2xl p-6 shadow-2xl border ${
-            isDark
-              ? 'bg-bg-dark border-border-dark'
-              : 'bg-bg-light border-border-light'
-          }`}
+          className="relative z-10 w-[320px] rounded-2xl p-6 shadow-2xl border bg-bg-dark border-border-dark"
           variants={cardVariants}
         >
           {/* Header */}
@@ -87,20 +80,20 @@ export default function XPSummary() {
 
           {/* Tasks completed */}
           <motion.div variants={itemVariants} className="flex justify-between items-center mb-3">
-            <span className={`text-xs font-sans ${isDark ? 'text-muted-dark' : 'text-muted-light'}`}>
+            <span className="text-xs font-sans text-muted-dark">
               Tasks completed
             </span>
-            <span className={`text-sm font-sans font-semibold ${isDark ? 'text-text-dark' : 'text-text-light'}`}>
+            <span className="text-sm font-sans font-semibold text-text-dark">
               {xpSummary.tasksCompleted}
             </span>
           </motion.div>
 
           {/* Base XP */}
           <motion.div variants={itemVariants} className="flex justify-between items-center mb-3">
-            <span className={`text-xs font-sans ${isDark ? 'text-muted-dark' : 'text-muted-light'}`}>
+            <span className="text-xs font-sans text-muted-dark">
               Base XP
             </span>
-            <span className={`text-sm font-sans font-semibold ${isDark ? 'text-text-dark' : 'text-text-light'}`}>
+            <span className="text-sm font-sans font-semibold text-text-dark">
               +{(xpSummary.tasksCompleted * 100).toLocaleString()}
             </span>
           </motion.div>
@@ -108,11 +101,10 @@ export default function XPSummary() {
           {/* Loot Pulls section */}
           {xpSummary.lootBreakdown && xpSummary.lootBreakdown.length > 0 && (
             <motion.div variants={itemVariants} className="mb-3">
-              <div className={`text-xs font-sans mb-2 ${isDark ? 'text-muted-dark' : 'text-muted-light'}`}>
+              <div className="text-xs font-sans mb-2 text-muted-dark">
                 Loot Pulls
               </div>
 
-              {/* Non-common tiers listed individually, highest first */}
               {xpSummary.lootBreakdown
                 .filter(l => l.tier !== 'common')
                 .sort((a, b) => b.value - a.value)
@@ -130,7 +122,7 @@ export default function XPSummary() {
                         {l.label} {l.value}x
                       </span>
                       <span
-                        className={`text-xs font-sans truncate ${isDark ? 'text-muted-dark' : 'text-muted-light'}`}
+                        className="text-xs font-sans truncate text-muted-dark"
                         style={{ maxWidth: 90 }}
                       >
                         {l.taskText}
@@ -146,7 +138,6 @@ export default function XPSummary() {
                 ))
               }
 
-              {/* Common pulls collapsed */}
               {(() => {
                 const commons = xpSummary.lootBreakdown.filter(l => l.tier === 'common')
                 if (commons.length === 0) return null
@@ -171,7 +162,7 @@ export default function XPSummary() {
           {/* Streak */}
           {xpSummary.streakDays > 1 && (
             <motion.div variants={itemVariants} className="flex justify-between items-center mb-3">
-              <span className={`text-xs font-sans ${isDark ? 'text-muted-dark' : 'text-muted-light'}`}>
+              <span className="text-xs font-sans text-muted-dark">
                 {xpSummary.streakDays}-Day Streak
               </span>
               <span className="text-sm font-sans font-semibold text-amber-400">
@@ -182,12 +173,12 @@ export default function XPSummary() {
 
           {/* Divider */}
           <motion.div variants={itemVariants}>
-            <div className={`h-px my-3 ${isDark ? 'bg-border-dark' : 'bg-border-light'}`} />
+            <div className="h-px my-3 bg-border-dark" />
           </motion.div>
 
           {/* Total XP */}
           <motion.div variants={itemVariants} className="flex justify-between items-center mb-4">
-            <span className={`text-sm font-sans font-bold ${isDark ? 'text-text-dark' : 'text-text-light'}`}>
+            <span className="text-sm font-sans font-bold text-text-dark">
               Total XP
             </span>
             <span className="text-lg font-sans font-bold" style={{ color: '#FFD700' }}>
@@ -201,13 +192,11 @@ export default function XPSummary() {
               <span className="text-[10px] font-sans font-medium" style={{ color: tierColor }}>
                 {rank.name}
               </span>
-              <span className={`text-[10px] font-sans ${isDark ? 'text-muted-dark' : 'text-muted-light'}`}>
+              <span className="text-[10px] font-sans text-muted-dark">
                 {progress.current.toLocaleString()} / {progress.needed.toLocaleString()} XP
               </span>
             </div>
-            <div className="h-2 rounded-full overflow-hidden" style={{
-              backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'
-            }}>
+            <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: 'rgba(255,255,255,0.08)' }}>
               <motion.div
                 className="h-full rounded-full"
                 style={{ backgroundColor: tierColor }}
@@ -222,11 +211,7 @@ export default function XPSummary() {
           <motion.div variants={itemVariants}>
             <button
               onClick={dismissXPSummary}
-              className={`w-full py-2.5 rounded-xl text-sm font-sans font-semibold transition-colors ${
-                isDark
-                  ? 'bg-surface-dark text-text-dark hover:bg-border-dark'
-                  : 'bg-surface-light text-text-light hover:bg-border-light'
-              }`}
+              className="w-full py-2.5 rounded-xl text-sm font-sans font-semibold transition-colors bg-surface-dark text-text-dark hover:bg-border-dark"
             >
               Continue
             </button>

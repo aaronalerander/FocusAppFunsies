@@ -3,7 +3,7 @@ import useTaskStore from '@/store/tasks'
 import TaskInput from '@/components/TaskInput'
 import SortableTaskList from '@/components/SortableTaskList'
 
-function EmptyState({ isDark }) {
+function EmptyState() {
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -11,7 +11,7 @@ function EmptyState({ isDark }) {
       transition={{ delay: 0.2 }}
       className="flex flex-col items-center justify-center py-16 px-6"
     >
-      <p className={`text-sm font-sans text-center ${isDark ? 'text-muted-dark' : 'text-muted-light'} opacity-50`}>
+      <p className="text-sm font-sans text-center text-muted-dark opacity-50">
         Nothing up next.
         <br />
         Park tasks here to tackle later.
@@ -22,14 +22,12 @@ function EmptyState({ isDark }) {
 
 export default function LaterView() {
   const laterTasks = useTaskStore(s => s.laterTasks())
-  const theme = useTaskStore(s => s.settings.theme)
-  const isDark = theme === 'dark'
 
   return (
     <div className="h-full flex flex-col pt-4">
       <div className="flex-1 overflow-y-auto">
         <SortableTaskList tasks={laterTasks} />
-        {laterTasks.length === 0 && <EmptyState isDark={isDark} />}
+        {laterTasks.length === 0 && <EmptyState />}
       </div>
 
       <TaskInput />

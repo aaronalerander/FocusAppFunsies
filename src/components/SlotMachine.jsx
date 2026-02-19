@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import useTaskStore from '@/store/tasks'
 import { MULTIPLIER_TIERS } from '@/utils/progression'
 import {
+  playSlotEntrance,
   playSlotLock,
   playSlotResultCommon,
   playSlotResultRare,
@@ -305,6 +306,11 @@ function SlotMachineInner({ slotMachine, tier, soundEnabled, dismissSlotMachine 
     }
   }, [])
 
+  // Entrance sound — fires once on mount
+  useEffect(() => {
+    if (soundEnabled) playSlotEntrance()
+  }, [])
+
   // Auto-dismiss after hold
   useEffect(() => {
     if (phase !== 'result') return
@@ -322,23 +328,44 @@ function SlotMachineInner({ slotMachine, tier, soundEnabled, dismissSlotMachine 
 
   return (
     <motion.div
-      className="fixed inset-0 flex flex-col items-center justify-center"
+      className="fixed inset-0"
       style={{ zIndex: 200 }}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
+      initial={false}
       exit={{ opacity: 0 }}
-      transition={{ duration: 0.12 }}
+      transition={{ duration: 0.9, ease: 'easeInOut' }}
     >
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/88" />
 
-      {/* Screen flash on result */}
+      {/* Layer 1: dark backdrop — fades in fast, no blur so GPU stays happy */}
+      <motion.div
+        className="absolute inset-0 bg-black/88"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.6, ease: 'easeOut' }}
+        style={{ willChange: 'opacity' }}
+      />
+
+      {/* Layer 2: frosted glass — separate element so blur doesn't repaint during opacity animation */}
+      <motion.div
+        className="absolute inset-0"
+        style={{
+          background: 'radial-gradient(ellipse at 40% 20%, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.028) 50%, rgba(0,0,0,0.154) 100%)',
+          backdropFilter: 'blur(28px) saturate(1.6)',
+          WebkitBackdropFilter: 'blur(28px) saturate(1.6)',
+          willChange: 'opacity',
+        }}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.9, ease: 'easeOut' }}
+      />
+
+      {/* Layer 3: screen flash on result */}
       <AnimatePresence>
         {phase === 'result' && flashConfig.opacity > 0 && (
           <motion.div
             key="flash"
             className="absolute inset-0 pointer-events-none"
             style={{
+              zIndex: 1,
               background: flashConfig.rainbow
                 ? 'conic-gradient(from 0deg, #FF0000, #FF7F00, #FFFF00, #00FF00, #0000FF, #8B00FF, #FF0000)'
                 : tier.color,
@@ -351,30 +378,27 @@ function SlotMachineInner({ slotMachine, tier, soundEnabled, dismissSlotMachine 
         )}
       </AnimatePresence>
 
-      {/* Content — liquid-glass full-window overlay */}
-      <motion.div
-        className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-6"
-        style={{
-          background: 'radial-gradient(ellipse at 40% 20%, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.028) 50%, rgba(0,0,0,0.154) 100%)',
-          backdropFilter: 'blur(28px) saturate(1.6)',
-          WebkitBackdropFilter: 'blur(28px) saturate(1.6)',
-        }}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-      >
+      {/* Layer 4: content — staggered in after glass settles */}
+      <div className="absolute inset-0 flex flex-col items-center justify-center gap-6" style={{ zIndex: 2 }}>
+
         {/* Task name */}
         <motion.div
-          initial={{ opacity: 0, y: -6 }}
+          initial={{ opacity: 0, y: -8 }}
           animate={{ opacity: 0.55, y: 0 }}
-          transition={{ duration: 0.25 }}
+          transition={{ duration: 0.6, delay: 0.7, ease: 'easeOut' }}
           className="text-xs text-white font-sans truncate max-w-[240px] text-center tracking-wide"
         >
           {slotMachine.taskText}
         </motion.div>
 
         {/* Reels */}
-        <div className="flex gap-3">
+        <motion.div
+          className="flex gap-3"
+          initial={{ opacity: 0, scale: 0.92 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.55, delay: 0.85, ease: [0.22, 1, 0.36, 1] }}
+          style={{ willChange: 'opacity, transform' }}
+        >
           {[0, 1, 2].map(i => (
             <Reel
               key={i}
@@ -384,7 +408,7 @@ function SlotMachineInner({ slotMachine, tier, soundEnabled, dismissSlotMachine 
               totalDuration={totalDuration}
             />
           ))}
-        </div>
+        </motion.div>
 
         {/* Result */}
         <div style={{ minHeight: 80 }} className="flex items-center justify-center">
@@ -438,7 +462,7 @@ function SlotMachineInner({ slotMachine, tier, soundEnabled, dismissSlotMachine 
           </AnimatePresence>
         </div>
 
-      </motion.div>
+      </div>
     </motion.div>
   )
 }

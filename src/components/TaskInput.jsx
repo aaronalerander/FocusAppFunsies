@@ -23,13 +23,6 @@ const TI_SWAP_STYLE = `
     92%  { transform: scale(1.05) translateY(-0.5px); }
     100% { opacity: 1; transform: scale(1) translateY(0); }
   }
-  @keyframes tiGrowIn {
-    0%   { opacity: 0; transform: scale(0.55) translateY(2px); }
-    65%  { opacity: 1; transform: scale(1.15) translateY(-1px); }
-    82%  { transform: scale(0.93) translateY(0.5px); }
-    92%  { transform: scale(1.05) translateY(-0.5px); }
-    100% { opacity: 1; transform: scale(1) translateY(0); }
-  }
   @keyframes tiFadeOut {
     0%   { opacity: 1; transform: scale(1); }
     100% { opacity: 0; transform: scale(0.65); }
@@ -73,7 +66,6 @@ export default function TaskInput() {
   const settings     = useTaskStore(s => s.settings)
   const activeTab    = useTaskStore(s => s.ui.activeTab)
   const soundEnabled = settings.soundEnabled
-  const isDark       = settings.theme === 'dark'
 
   const placeholder = activeTab === 'later' ? 'Add to up next...' : 'What needs to happen today?'
 
@@ -141,14 +133,13 @@ export default function TaskInput() {
     setCommitting(true)
     if (soundEnabled) playTaskAdded()
     setTimeout(() => {
-      addTask(value.trim())   // addTask handles tag via store; we pass tag separately below
+      addTask(value.trim())
       setValue('')
       setTag(null)
       setCommitting(false)
     }, 420)
   }, [value, committing, soundEnabled, addTask])
 
-  // addTask in the store doesn't accept a tag param; call update after
   const submitWithTag = useCallback(async () => {
     if (!value.trim() || committing) return
     setCommitting(true)
@@ -157,7 +148,6 @@ export default function TaskInput() {
     const taskTag = tag
     setTimeout(async () => {
       await addTask(text)
-      // If a tag was selected, apply it to the most recently added today/later task
       if (taskTag) {
         const all = await window.focusAPI.tasks.readAll()
         const match = [...(all || [])].reverse().find(t => t.text === text)
@@ -205,15 +195,18 @@ export default function TaskInput() {
 
   const dailyXPEarned = (() => {
     const resetBoundary = getResetTimestamp(settings.dailyResetHourUTC ?? 10)
-    return tasks
+    const completionXP = tasks
       .filter(t => t.status === 'done' && t.completedAt && t.completedAt > resetBoundary)
       .reduce((sum, t) => sum + (t.final_xp_awarded || 0), 0)
+    const creationXP = tasks
+      .filter(t => t.createdAt && t.createdAt > resetBoundary)
+      .reduce((sum, t) => sum + (t.creation_xp_awarded || 0), 0)
+    return completionXP + creationXP
   })()
   const xpDelta  = dailyXPEarned - (progression.dailyBleedTotal || 0)
   const isNegXP  = xpDelta < 0
   const isZeroXP = xpDelta === 0
-  const xpLabel  = isNegXP ? `${xpDelta} XP` : `+${xpDelta} XP`
-  const xpColor  = isNegXP ? '#f87171' : isZeroXP ? (isDark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.25)') : tierColor
+  const xpColor  = isNegXP ? '#f87171' : isZeroXP ? 'rgba(255,255,255,0.3)' : tierColor
 
   const [phase, setPhase] = useState('rank-show')
   const phaseTimer = useRef(null)
@@ -234,15 +227,12 @@ export default function TaskInput() {
     return () => clearTimeout(phaseTimer.current)
   }, [])
 
-  const rankVisible = phase === 'rank-show' || phase === 'rank-out' || phase === 'rank-in'
-  const xpVisible   = phase === 'xp-in'    || phase === 'xp-show'  || phase === 'xp-out'
-
   const selectedColor = tag ? getTagColor(tag) : null
 
-  // Shell background matching QE bar tone, respecting theme
-  const shellBg   = isDark ? 'rgba(30,30,30,0.97)' : 'rgba(245,245,245,0.97)'
-  const textColor = isDark ? '#e0e0e0' : '#1a1a1a'
-  const mutedColor = isDark ? '#555' : '#aaa'
+  // Dark-only shell background
+  const shellBg    = 'rgba(30,30,30,0.97)'
+  const textColor  = '#e0e0e0'
+  const mutedColor = '#555'
 
   return (
     <div
@@ -256,12 +246,10 @@ export default function TaskInput() {
           className="mb-1.5 rounded-xl p-2 overflow-y-auto"
           style={{
             maxHeight: 192,
-            background: isDark ? 'rgba(30,30,30,0.97)' : 'rgba(245,245,245,0.97)',
+            background: 'rgba(30,30,30,0.97)',
             backdropFilter: 'blur(20px)',
             WebkitBackdropFilter: 'blur(20px)',
-            boxShadow: isDark
-              ? '0 8px 32px rgba(0,0,0,0.4), 0 0 0 0.5px rgba(255,255,255,0.08)'
-              : '0 8px 32px rgba(0,0,0,0.12), 0 0 0 0.5px rgba(0,0,0,0.08)',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.4), 0 0 0 0.5px rgba(255,255,255,0.08)',
           }}
         >
           <input
@@ -283,7 +271,7 @@ export default function TaskInput() {
                 className="flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer text-xs font-sans transition-colors"
                 style={{
                   color: textColor,
-                  background: idx === activeTagIdx ? (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)') : 'transparent',
+                  background: idx === activeTagIdx ? 'rgba(255,255,255,0.08)' : 'transparent',
                 }}
               >
                 <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ background: c.bg }} />
@@ -299,13 +287,11 @@ export default function TaskInput() {
         </div>
       )}
 
-      {/* Bar shell — matches QE proportions exactly */}
+      {/* Bar shell */}
       <div
         className={`ti-bar-shell overflow-hidden rounded-2xl${committing ? ' ti-committing' : ''}`}
         style={{
-          boxShadow: isDark
-            ? '0 4px 16px rgba(0,0,0,0.35), 0 0 0 0.5px rgba(255,255,255,0.08)'
-            : '0 4px 16px rgba(0,0,0,0.10), 0 0 0 0.5px rgba(0,0,0,0.08)',
+          boxShadow: '0 4px 16px rgba(0,0,0,0.35), 0 0 0 0.5px rgba(255,255,255,0.08)',
         }}
       >
         {/* Main input row */}

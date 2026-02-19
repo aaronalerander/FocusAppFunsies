@@ -386,10 +386,10 @@ export default function QuickEntryApp() {
         <div
           className="flex items-center justify-between px-4"
           style={{
-            paddingTop: 8,
-            paddingBottom: 6,
-            marginTop: -6,
-            borderRadius: 0,
+            paddingTop: 16,   /* extra top padding so text clears the overlapping grey bar */
+            paddingBottom: 8,
+            marginTop: -12,   /* pull up further behind the grey bar */
+            borderRadius: '0 0 14px 14px',  /* round only bottom corners */
             background: 'rgba(18, 18, 18, 0.95)',
             backdropFilter: 'blur(20px)',
             WebkitBackdropFilter: 'blur(20px)',

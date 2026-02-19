@@ -104,6 +104,50 @@ export function playTaskAdded() {
   }
 }
 
+// ── Slot Machine Entrance ────────────────────────────────────────────────────
+// Deep cinematic swell that plays as the overlay fades in — builds hype.
+// Uses a full ADSR envelope (attack → sustain → release) so it never cuts out.
+// Total duration ≈ 3s, sustains for ~1.5s before gently releasing.
+export function playSlotEntrance() {
+  try {
+    const ac = getCtx()
+    const t = ac.currentTime
+
+    // Helper: ADSR oscillator — attack, sustain at peakGain, release
+    function adsr(freq, startTime, attackDur, sustainDur, releaseDur, peakGain, type = 'sine') {
+      const osc = ac.createOscillator()
+      const env = ac.createGain()
+      osc.type = type
+      osc.frequency.setValueAtTime(freq, startTime)
+
+      env.gain.setValueAtTime(0, startTime)
+      // Attack — ramp up to peak
+      env.gain.linearRampToValueAtTime(peakGain, startTime + attackDur)
+      // Sustain — hold (slight dip to 85% for natural feel)
+      env.gain.linearRampToValueAtTime(peakGain * 0.85, startTime + attackDur + sustainDur)
+      // Release — smooth exponential fade to silence
+      env.gain.exponentialRampToValueAtTime(0.0001, startTime + attackDur + sustainDur + releaseDur)
+
+      osc.connect(env)
+      env.connect(ac.destination)
+      osc.start(startTime)
+      osc.stop(startTime + attackDur + sustainDur + releaseDur + 0.05)
+    }
+
+    // Sub-bass drone — slow swell, holds through the whole glass fade-in
+    adsr(48,  t,       0.9, 1.4, 0.7, 0.09, 'sine')       // fundamental: 48Hz sub-bass
+    adsr(72,  t + 0.1, 0.8, 1.2, 0.7, 0.06, 'sine')       // perfect fifth above
+    // Warm mid-range pad — enters as glass settles
+    adsr(C5,  t + 0.6, 0.5, 1.0, 0.8, 0.07, 'triangle')  // C5 warmth
+    adsr(G5,  t + 0.9, 0.4, 0.9, 0.7, 0.05, 'triangle')  // G5 — open fifth
+    // Bright shimmer rise — sparkle just before reels appear
+    adsr(C6,  t + 1.3, 0.25, 0.5, 0.8, 0.04, 'sine')     // C6 bell shimmer
+    adsr(E6,  t + 1.6, 0.20, 0.4, 0.8, 0.03, 'sine')     // E6 top shimmer
+  } catch (err) {
+    console.warn('[useSound] slot entrance error:', err)
+  }
+}
+
 // ── Slot Machine Sounds ──────────────────────────────────────────────────────
 
 // Short percussive click played when each reel locks

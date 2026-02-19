@@ -25,7 +25,6 @@ export default function App() {
   const xpSummary = useTaskStore(s => s.ui.xpSummary)
   const rankUpAnimation = useTaskStore(s => s.ui.rankUpAnimation)
   const slotMachine = useTaskStore(s => s.ui.slotMachine)
-  const theme = useTaskStore(s => s.settings.theme)
   const openSettings = useTaskStore(s => s.openSettings)
 
   useEffect(() => {
@@ -33,9 +32,9 @@ export default function App() {
   }, [initialize])
 
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme)
-    document.documentElement.style.backgroundColor = theme === 'dark' ? '#0F0F0F' : '#FAF9F6'
-  }, [theme])
+    document.documentElement.setAttribute('data-theme', 'dark')
+    document.documentElement.style.backgroundColor = '#0F0F0F'
+  }, [])
 
   // Keyboard shortcut for settings
   useEffect(() => {
@@ -49,12 +48,10 @@ export default function App() {
     return () => window.removeEventListener('keydown', handler)
   }, [openSettings])
 
-  const isDark = theme === 'dark'
-
   if (!isLoaded) {
     return (
-      <div className={`h-full flex items-center justify-center ${isDark ? 'bg-bg-dark' : 'bg-bg-light'}`}>
-        <div className={`text-sm font-sans tracking-widest uppercase opacity-40 ${isDark ? 'text-text-dark' : 'text-text-light'}`}>
+      <div className="h-full flex items-center justify-center bg-bg-dark">
+        <div className="text-sm font-sans tracking-widest uppercase opacity-40 text-text-dark">
           focus
         </div>
       </div>
@@ -65,10 +62,8 @@ export default function App() {
 
   return (
     <div
-      data-theme={theme}
-      className={`h-full flex flex-col overflow-hidden transition-colors duration-200 ${
-        isDark ? 'bg-bg-dark text-text-dark' : 'bg-bg-light text-text-light'
-      }`}
+      data-theme="dark"
+      className="h-full flex flex-col overflow-hidden bg-bg-dark text-text-dark"
     >
       <Confetti confetti={confetti} />
       <TabBar />

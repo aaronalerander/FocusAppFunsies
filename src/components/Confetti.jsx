@@ -390,7 +390,10 @@ export default function Confetti({ confetti }) {
     const isFreeXP = !!confetti.isFreeXP
     const tierId = confetti.multiplierTierId || 'common'
 
-    if (confetti.mode === 'rankUp')   fireRankUpConfetti(confetti.tierColor || '#FFD700', !!confetti.isMajor)
+    // rankUp confetti is fired into a local canvas inside RankUpAnimation
+    // so it stays within the overlay. Skip it here to avoid the global
+    // canvas-confetti canvas (z-200) painting above the overlay.
+    if (confetti.mode === 'rankUp')       return
     else if (confetti.mode === 'allDone') fireAllDone(tierId, isFreeXP)
     else                                  fireTier(tierId, isFreeXP)
   }, [confetti])

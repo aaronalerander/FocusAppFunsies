@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import confettiLib from 'canvas-confetti'
 import useTaskStore from '@/store/tasks'
 import { getRankById, RANK_COLORS } from '@/utils/progression'
 import { playRankUp } from '@/hooks/useSound'
@@ -132,10 +133,17 @@ export default function RankUpAnimation() {
   const dismissRankUpAnimation = useTaskStore(s => s.dismissRankUpAnimation)
   const soundEnabled = useTaskStore(s => s.settings.soundEnabled)
   const firedRef = useRef(false)
+  const canvasRef = useRef(null)
   const [phase, setPhase] = useState('anticipation') // 'anticipation' | 'transform' | 'reveal'
 
-  const fromRank = rankUpAnimation ? getRankById(rankUpAnimation.fromRankId) : null
-  const toRank   = rankUpAnimation ? getRankById(rankUpAnimation.toRankId) : null
+  // Keep a snapshot of the last non-null rankUpAnimation so we can still render
+  // during the exit animation after the store has been cleared.
+  const snapshotRef = useRef(null)
+  if (rankUpAnimation) snapshotRef.current = rankUpAnimation
+  const data = snapshotRef.current
+
+  const fromRank = data ? getRankById(data.fromRankId) : null
+  const toRank   = data ? getRankById(data.toRankId) : null
   const isMajor  = fromRank && toRank ? isMajorPromotion(fromRank, toRank) : false
 
   const fromColor = fromRank ? (RANK_COLORS[fromRank.tier]?.primary || '#888') : '#888'
@@ -160,33 +168,99 @@ export default function RankUpAnimation() {
     // Phase 2: transform — icon dissolves, then reveal
     const t2 = setTimeout(() => {
       setPhase('reveal')
-
-      // Confetti + sound fires on reveal
-      useTaskStore.setState(state => ({
-        ui: { ...state.ui, confetti: { mode: 'rankUp', id: Date.now(), tierColor: toColor, isMajor } }
-      }))
       if (soundEnabled) playRankUp()
+
+      // Fire confetti into the local canvas inside the overlay so it stays
+      // behind the rank icon content but above the frosted glass layer.
+      // Using a local canvas means it won't escape above z-[150].
+      setTimeout(() => {
+        const canvas = canvasRef.current
+        if (!canvas) return
+        const fire = confettiLib.create(canvas, { resize: true, useWorker: false })
+        const colors = [toColor, '#FFD700', '#FF3CAC', '#00D4FF', '#C8F135', '#ffffff', '#FF6B6B']
+        const scale = isMajor ? 3.0 : 1.0
+
+        const sideBurst = (side, delay, count = 120) => setTimeout(() => fire({
+          particleCount: Math.round(count * scale),
+          angle: side === 'left' ? 60 : 120,
+          spread: 55,
+          origin: { x: side === 'left' ? 0 : 1, y: 0.55 },
+          colors, ticks: 400, gravity: 0.85, startVelocity: 70, scalar: 1.1, decay: 0.93,
+        }), delay)
+
+        sideBurst('left',  0);   sideBurst('right', 60)
+        sideBurst('left',  120); sideBurst('right', 180)
+        sideBurst('left',  240); sideBurst('right', 300)
+        sideBurst('left',  360); sideBurst('right', 420)
+
+        setTimeout(() => fire({
+          particleCount: Math.round(600 * scale), spread: 130,
+          origin: { x: 0.5, y: 0.25 }, colors, ticks: 500,
+          gravity: 0.65, startVelocity: 55, scalar: 1.4,
+        }), 500)
+
+        setTimeout(() => fire({ particleCount: Math.round(250 * scale), angle: 75,  spread: 40, origin: { x: 0.05, y: 0 }, colors, ticks: 450, gravity: 1.1, startVelocity: 45 }), 700)
+        setTimeout(() => fire({ particleCount: Math.round(250 * scale), angle: 105, spread: 40, origin: { x: 0.95, y: 0 }, colors, ticks: 450, gravity: 1.1, startVelocity: 45 }), 820)
+
+        setTimeout(() => fire({
+          particleCount: Math.round(350 * scale), spread: 100,
+          origin: { x: 0.5, y: 0.4 }, colors, ticks: 380,
+          gravity: 0.9, startVelocity: 42, scalar: 1.2,
+        }), 1100)
+
+        sideBurst('left',  1400, 150); sideBurst('right', 1500, 150)
+        sideBurst('left',  1600, 120); sideBurst('right', 1700, 120)
+
+        setTimeout(() => fire({
+          particleCount: Math.round(500 * scale), spread: 160,
+          origin: { x: 0.5, y: 0.3 }, colors, ticks: 350,
+          gravity: 1.1, startVelocity: 38, scalar: 1.0, decay: 0.91,
+        }), 2000)
+      }, 50) // small delay to ensure canvas is laid out
     }, anticipationMs + transformMs)
 
     return () => { clearTimeout(t1); clearTimeout(t2) }
   }, [rankUpAnimation])
 
-  if (!rankUpAnimation) return null
-
   const ringCount = isMajor ? 5 : 3
 
   return (
-    <AnimatePresence>
       <motion.div
-        className="fixed inset-0 z-[150] flex items-center justify-center cursor-pointer"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
+        className="fixed inset-0 z-[300] flex items-center justify-center cursor-pointer"
+        initial={false}
         exit={{ opacity: 0 }}
-        transition={{ duration: 0.15 }}
+        transition={{ duration: 0.8, ease: 'easeInOut' }}
         onClick={phase === 'reveal' ? dismissRankUpAnimation : undefined}
       >
-        {/* Backdrop */}
-        <div className="absolute inset-0 bg-black/92 backdrop-blur-md" />
+        {/* Layer 1: dark backdrop — fast fade, no blur on this element */}
+        <motion.div
+          className="absolute inset-0"
+          style={{ backgroundColor: 'rgba(0,0,0,0.92)', willChange: 'opacity' }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.5, ease: 'easeOut' }}
+        />
+
+        {/* Layer 2: frosted glass overlay — slow separate fade so blur doesn't repaint during opacity animation */}
+        <motion.div
+          className="absolute inset-0"
+          style={{
+            backdropFilter: 'blur(28px) saturate(1.6)',
+            WebkitBackdropFilter: 'blur(28px) saturate(1.6)',
+            background: 'radial-gradient(ellipse at 40% 20%, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.028) 50%, rgba(0,0,0,0.154) 100%)',
+            willChange: 'opacity',
+          }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.9, ease: 'easeOut' }}
+        />
+
+        {/* Layer 3: confetti canvas — sits above glass, below content; confetti fires into here */}
+        <canvas
+          ref={canvasRef}
+          className="absolute inset-0 pointer-events-none"
+          style={{ width: '100%', height: '100%', zIndex: 5 }}
+        />
 
         {/* Flash burst on reveal */}
         <AnimatePresence>
@@ -194,7 +268,7 @@ export default function RankUpAnimation() {
             <motion.div
               key="flash"
               className="absolute inset-0 pointer-events-none"
-              style={{ backgroundColor: toColor, mixBlendMode: 'screen' }}
+              style={{ backgroundColor: toColor, mixBlendMode: 'screen', zIndex: 6 }}
               initial={{ opacity: 0 }}
               animate={{ opacity: [0, isMajor ? 0.6 : 0.35, 0.1, isMajor ? 0.45 : 0.2, 0] }}
               transition={{ duration: isMajor ? 1.4 : 1.0, times: [0, 0.06, 0.2, 0.35, 1] }}
@@ -360,7 +434,7 @@ export default function RankUpAnimation() {
                 </motion.h2>
 
                 {/* New slot pill */}
-                {rankUpAnimation.newSlots && (
+                {data?.newSlots && (
                   <motion.div
                     className="mt-4 px-4 py-2 rounded-lg text-center"
                     style={{ background: `${toColor}22`, border: `1px solid ${toColor}44` }}
@@ -369,7 +443,7 @@ export default function RankUpAnimation() {
                     transition={{ delay: 0.7 }}
                   >
                     <p className="text-xs font-sans font-semibold" style={{ color: toColor }}>
-                      New slot unlocked — Today now holds {rankUpAnimation.newSlots} tasks
+                      New slot unlocked — Today now holds {data.newSlots} tasks
                     </p>
                   </motion.div>
                 )}
@@ -406,6 +480,5 @@ export default function RankUpAnimation() {
           </AnimatePresence>
         </div>
       </motion.div>
-    </AnimatePresence>
   )
 }
