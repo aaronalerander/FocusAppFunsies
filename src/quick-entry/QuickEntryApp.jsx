@@ -3,6 +3,35 @@ import { getTagColor } from '../utils/tagColors'
 import { RANK_COLORS } from '../utils/progression'
 import { playTaskAdded } from '../hooks/useSound'
 
+// ── Rank ↔ XP delta swap animation ────────────────────────────────────────
+const RANK_HOLD_MS = 6400
+const XP_HOLD_MS   = 4400
+const TRANS_MS     = 400
+
+const QE_SWAP_STYLE = `
+  @keyframes qeShrinkOut {
+    0%   { opacity: 1; transform: scale(1) translateY(0); }
+    100% { opacity: 0; transform: scale(0.55) translateY(2px); }
+  }
+  @keyframes qeGrowIn {
+    0%   { opacity: 0; transform: scale(0.55) translateY(2px); }
+    65%  { opacity: 1; transform: scale(1.15) translateY(-1px); }
+    82%  { transform: scale(0.93) translateY(0.5px); }
+    92%  { transform: scale(1.05) translateY(-0.5px); }
+    100% { opacity: 1; transform: scale(1) translateY(0); }
+  }
+  @keyframes qeFadeOut {
+    0%   { opacity: 1; transform: scale(1); }
+    100% { opacity: 0; transform: scale(0.65); }
+  }
+`
+if (typeof document !== 'undefined' && !document.getElementById('qe-swap-style')) {
+  const s = document.createElement('style')
+  s.id = 'qe-swap-style'
+  s.textContent = QE_SWAP_STYLE
+  document.head.appendChild(s)
+}
+
 export default function QuickEntryApp() {
   const [value, setValue] = useState('')
   const [tag, setTag] = useState(null)
@@ -168,6 +197,38 @@ export default function QuickEntryApp() {
   const selectedColor = tag ? getTagColor(tag) : null
 
   const tierColor = stats ? (RANK_COLORS[stats.rankTier]?.primary || '#888') : '#888'
+
+  // ── Rank ↔ XP delta phase machine ────────────────────────────────────────
+  const [phase, setPhase] = useState('rank-show')
+  const phaseTimer = useRef(null)
+
+  useEffect(() => {
+    function schedule(next, delay) {
+      phaseTimer.current = setTimeout(() => run(next), delay)
+    }
+    function run(p) {
+      setPhase(p)
+      switch (p) {
+        case 'rank-show': schedule('rank-out',  RANK_HOLD_MS); break
+        case 'rank-out':  schedule('xp-in',     TRANS_MS);     break
+        case 'xp-in':     schedule('xp-show',   TRANS_MS + 150); break
+        case 'xp-show':   schedule('xp-out',    XP_HOLD_MS);   break
+        case 'xp-out':    schedule('rank-in',   TRANS_MS);     break
+        case 'rank-in':   schedule('rank-show', TRANS_MS + 150); break
+      }
+    }
+    run('rank-show')
+    return () => clearTimeout(phaseTimer.current)
+  }, [])
+
+  const rankVisible = phase === 'rank-show' || phase === 'rank-out' || phase === 'rank-in'
+  const xpVisible   = phase === 'xp-in'    || phase === 'xp-show'  || phase === 'xp-out'
+
+  const xpDelta  = stats?.xpDelta ?? 0
+  const isNegXP  = xpDelta < 0
+  const isZeroXP = xpDelta === 0
+  const xpLabel  = isNegXP ? `${xpDelta} XP` : `+${xpDelta} XP`
+  const xpColor  = isNegXP ? '#f87171' : isZeroXP ? '#555' : tierColor
 
   return (
     <div
@@ -355,14 +416,57 @@ export default function QuickEntryApp() {
             </span>
           </div>
 
-          {/* Right: current rank */}
+          {/* Right: rank name ↔ XP delta */}
           <div className="flex items-center gap-1.5">
-            <span
-              className="text-[10px] font-sans font-medium"
-              style={{ color: tierColor }}
-            >
-              {stats ? stats.rankName : '–'}
-            </span>
+            {/* Tier dot */}
+            <div style={{
+              width: 5, height: 5, borderRadius: '50%',
+              backgroundColor: tierColor,
+              flexShrink: 0,
+              boxShadow: `0 0 4px ${tierColor}99`,
+              opacity: 0.85,
+            }} />
+
+            {/* Swap container */}
+            <div style={{ position: 'relative', height: 13, minWidth: 56 }}>
+              {/* Rank name */}
+              <span
+                style={{
+                  position: 'absolute', left: 0, top: 0,
+                  fontSize: 10, fontWeight: 600,
+                  letterSpacing: '0.04em',
+                  textTransform: 'uppercase',
+                  color: tierColor,
+                  whiteSpace: 'nowrap',
+                  opacity: xpVisible ? 0 : 1,
+                  animation:
+                    phase === 'rank-out' ? `qeShrinkOut ${TRANS_MS}ms ease-in forwards` :
+                    phase === 'rank-in'  ? `qeGrowIn ${TRANS_MS + 150}ms cubic-bezier(0.22,1,0.36,1) forwards` :
+                    'none',
+                }}
+              >
+                {stats ? stats.rankName : '–'}
+              </span>
+
+              {/* XP delta */}
+              <span
+                style={{
+                  position: 'absolute', left: 0, top: 0,
+                  fontSize: 10, fontWeight: 700,
+                  letterSpacing: '-0.2px',
+                  fontVariantNumeric: 'tabular-nums',
+                  color: xpColor,
+                  whiteSpace: 'nowrap',
+                  opacity: rankVisible ? 0 : 1,
+                  animation:
+                    phase === 'xp-in'  ? `qeGrowIn ${TRANS_MS + 150}ms cubic-bezier(0.22,1,0.36,1) forwards` :
+                    phase === 'xp-out' ? `qeFadeOut ${TRANS_MS}ms ease-in forwards` :
+                    'none',
+                }}
+              >
+                {xpLabel}
+              </span>
+            </div>
           </div>
         </div>
       </div>

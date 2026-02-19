@@ -1044,10 +1044,17 @@ ipcMain.handle('quick-entry:stats', () => {
   const currentRankId = settings.currentRankId ?? 'bronze_4'
   const rank = getRankById(currentRankId)
 
+  const dailyXPEarned = todayTasks
+    .filter(t => t.status === 'done')
+    .reduce((sum, t) => sum + (t.final_xp_awarded || 0), 0)
+  const bleedLost = settings.daily_bleed_total ?? 0
+  const xpDelta = dailyXPEarned - bleedLost
+
   return {
     completed,
     total,
     rankName: rank.name,
     rankTier: rank.tier,
+    xpDelta,
   }
 })
