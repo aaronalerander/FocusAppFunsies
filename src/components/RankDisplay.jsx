@@ -1,7 +1,8 @@
-import { useRef, useEffect } from 'react'
+import { useRef, useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import useTaskStore from '@/store/tasks'
 import { getRankById, getNextRank, getXPProgress, RANK_COLORS } from '@/utils/progression'
+import { getResetTimestamp } from '@/utils/dateUtils'
 import { playRankProximityTone } from '@/hooks/useSound'
 
 const SIZE = 88
@@ -344,16 +345,107 @@ function LockIcon({ color }) {
   )
 }
 
+// ── XP Delta face ──────────────────────────────────────────────────────────
+// Shown in place of the rank badge during the XP flash.
+// Positive delta → green-tinted tier color. Negative (bleed) → red-tinted.
+function XPDeltaFace({ xpDelta, color }) {
+  const isNegative = xpDelta < 0
+  const isZero = xpDelta === 0
+  const display = isNegative ? `${xpDelta} XP` : `+${xpDelta} XP`
+
+  // Gains → tier color, losses → red, zero → muted
+  const accent = isNegative ? '#ff5555' : isZero ? `${color}88` : color
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 2,
+      }}
+    >
+      {/* Arrow indicator — hidden when zero */}
+      {!isZero && (
+        <div style={{ fontSize: 10, lineHeight: 1, color: accent, opacity: 0.8 }}>
+          {isNegative ? '▼' : '▲'}
+        </div>
+      )}
+      {/* XP number */}
+      <div
+        style={{
+          fontSize: 13,
+          fontWeight: 700,
+          letterSpacing: '-0.5px',
+          lineHeight: 1,
+          color: accent,
+          filter: `drop-shadow(0 0 6px ${accent}88)`,
+          fontVariantNumeric: 'tabular-nums',
+        }}
+      >
+        {display}
+      </div>
+      {/* "today" label */}
+      <div
+        style={{
+          fontSize: 8,
+          fontWeight: 500,
+          letterSpacing: '0.06em',
+          textTransform: 'uppercase',
+          color: accent,
+          opacity: 0.55,
+          lineHeight: 1,
+        }}
+      >
+        today
+      </div>
+    </div>
+  )
+}
+
+// ── Timings ────────────────────────────────────────────────────────────────
+const BADGE_HOLD_MS = 6400   // how long the rank badge shows
+const XP_HOLD_MS    = 4400   // how long the XP delta shows
+const TRANSITION_MS = 500    // fade-out duration before swap
+const CYCLE_MS      = BADGE_HOLD_MS + XP_HOLD_MS
+
+// CSS keyframes injected once
+const FLIP_STYLE = `
+  @keyframes rankShrinkOut {
+    0%   { opacity: 1; transform: scale(1); }
+    100% { opacity: 0; transform: scale(0.55); }
+  }
+  @keyframes rankGrowIn {
+    0%   { opacity: 0; transform: scale(0.55); }
+    65%  { opacity: 1; transform: scale(1.13); }
+    80%  { transform: scale(0.94); }
+    90%  { transform: scale(1.05); }
+    100% { opacity: 1; transform: scale(1); }
+  }
+  @keyframes rankFadeOut {
+    0%   { opacity: 1; transform: scale(1); }
+    100% { opacity: 0; transform: scale(0.75); }
+  }
+`
+if (typeof document !== 'undefined' && !document.getElementById('rank-flip-style')) {
+  const s = document.createElement('style')
+  s.id = 'rank-flip-style'
+  s.textContent = FLIP_STYLE
+  document.head.appendChild(s)
+}
+
 export default function RankDisplay() {
   const progression = useTaskStore(s => s.progression)
-  const theme = useTaskStore(s => s.settings.theme)
-  const soundEnabled = useTaskStore(s => s.settings.soundEnabled)
-  const isDark = theme === 'dark'
+  const tasks       = useTaskStore(s => s.tasks)
+  const settings    = useTaskStore(s => s.settings)
+  const soundEnabled = settings.soundEnabled
+  const isDark = settings.theme === 'dark'
 
-  const rank = getRankById(progression.currentRankId)
+  const rank     = getRankById(progression.currentRankId)
   const nextRank = getNextRank(progression.currentRankId)
   const progress = getXPProgress(progression.currentXP, progression.currentRankId)
-  const tierColor = RANK_COLORS[rank.tier]?.primary || '#888'
+  const tierColor  = RANK_COLORS[rank.tier]?.primary || '#888'
   const trackColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'
 
   const offset = CIRCUMFERENCE - (progress.percentage / 100) * CIRCUMFERENCE
@@ -361,22 +453,57 @@ export default function RankDisplay() {
   const showCapLock = progression.bleedCapHitToday && !progression.boardClearedToday
   const lockColor = isDark ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.30)'
 
+  // ── Daily XP delta ────────────────────────────────────────────────────────
+  // Sum final_xp_awarded for all tasks completed since today's reset boundary.
+  const dailyXPEarned = (() => {
+    const resetHour = settings.dailyResetHourUTC ?? 10
+    const resetBoundary = getResetTimestamp(resetHour)
+    return tasks
+      .filter(t => t.status === 'done' && t.completedAt && t.completedAt > resetBoundary)
+      .reduce((sum, t) => sum + (t.final_xp_awarded || 0), 0)
+  })()
+
+  // Net delta also accounts for bleed lost today
+  const bleedLost  = progression.dailyBleedTotal || 0
+  const xpDelta = dailyXPEarned - bleedLost
+
+  // ── Flash toggle ──────────────────────────────────────────────────────────
+  // phase: 'badge-show' | 'badge-out' | 'xp-in' | 'xp-show' | 'xp-out' | 'badge-in'
+  const [phase, setPhase] = useState('badge-show')
+  const timerRef = useRef(null)
+
+  useEffect(() => {
+    function schedule(nextPhase, delayMs) {
+      timerRef.current = setTimeout(() => runPhase(nextPhase), delayMs)
+    }
+
+    function runPhase(p) {
+      setPhase(p)
+      switch (p) {
+        case 'badge-show': schedule('badge-out',  BADGE_HOLD_MS); break
+        case 'badge-out':  schedule('xp-in',      TRANSITION_MS); break
+        case 'xp-in':      schedule('xp-show',    TRANSITION_MS + 150); break
+        case 'xp-show':    schedule('xp-out',     XP_HOLD_MS);   break
+        case 'xp-out':     schedule('badge-in',   TRANSITION_MS); break
+        case 'badge-in':   schedule('badge-show', TRANSITION_MS + 150); break
+      }
+    }
+
+    runPhase('badge-show')
+    return () => clearTimeout(timerRef.current)
+  }, [])
+
   // ── Rank Proximity Glow ─────────────────────────────────────────────────────
-  // When within 5% of next rank, the arc breathes in the color of the next tier.
-  // Intensity scales: ≥95% subtle → ≥98% visible → ≥99% hard to ignore.
-  // Only a positive anticipation signal — never fires during bleed demotions.
   const proximityPct = nextRank && rank.xpToNext > 0
     ? (progression.currentXP - rank.xpRequired) / rank.xpToNext * 100
     : 100
   const glowActive = !!nextRank && proximityPct >= 95 && !progression.bleedCapHitToday
   const nextTierColor = nextRank ? (RANK_COLORS[nextRank.tier]?.primary || tierColor) : tierColor
 
-  // Glow intensity: 0.4 at 95%, 0.7 at 98%, 1.0 at 99%+
   const glowIntensity = glowActive
     ? proximityPct >= 99 ? 1.0 : proximityPct >= 98 ? 0.7 : 0.4
     : 0
 
-  // Play the proximity tone once when glow first activates
   const prevGlowRef = useRef(false)
   useEffect(() => {
     if (glowActive && !prevGlowRef.current && soundEnabled) {
@@ -385,18 +512,13 @@ export default function RankDisplay() {
     prevGlowRef.current = glowActive
   }, [glowActive, soundEnabled])
 
-  // Pulse animation: slow breathing ~2.5s cycle. Not urgent, attention-catching.
-  // Max glow opacity/width scales with intensity (0.4 / 0.7 / 1.0)
-  const maxGlowOpacity = glowActive ? 0.3 + glowIntensity * 0.55 : 0
-  const maxStrokeExtra = glowActive ? glowIntensity * 2.5 : 0
-  const arcColor = glowActive ? nextTierColor : tierColor
-
-  // CSS keyframe animation name is unique per color so React can swap it cleanly
-  const pulseAnimName = `rankGlow_${nextTierColor.replace('#', '')}`
+  const maxGlowOpacity  = glowActive ? 0.3 + glowIntensity * 0.55 : 0
+  const maxStrokeExtra  = glowActive ? glowIntensity * 2.5 : 0
+  const arcColor        = glowActive ? nextTierColor : tierColor
+  const pulseAnimName   = `rankGlow_${nextTierColor.replace('#', '')}`
 
   return (
     <div className="relative" style={{ width: SIZE, height: SIZE }}>
-      {/* Inject keyframe animation for the glow pulse */}
       {glowActive && (
         <style>{`
           @keyframes ${pulseAnimName} {
@@ -423,7 +545,7 @@ export default function RankDisplay() {
           strokeWidth={STROKE}
         />
 
-        {/* Glow pulse overlay — separate circle, animates opacity+strokeWidth via CSS */}
+        {/* Glow pulse overlay */}
         {glowActive && (
           <circle
             cx={SIZE / 2}
@@ -444,7 +566,7 @@ export default function RankDisplay() {
           />
         )}
 
-        {/* Progress arc — main arc, always rendered, no glow animation */}
+        {/* Progress arc */}
         <motion.circle
           cx={SIZE / 2}
           cy={SIZE / 2}
@@ -465,20 +587,37 @@ export default function RankDisplay() {
         />
       </svg>
 
-      {/* Center: rank icon + division pips */}
+      {/* Center: rank badge ↔ XP delta */}
+      {/* Badge — visible during badge-show / badge-out / badge-in */}
       <div
-        className="absolute inset-0 flex flex-col items-center justify-center"
-        style={{ gap: 4 }}
+        style={{
+          position: 'absolute', inset: 0,
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          gap: 4,
+          animation:
+            phase === 'badge-out' ? `rankShrinkOut ${TRANSITION_MS}ms ease-in forwards` :
+            phase === 'badge-in'  ? `rankGrowIn ${TRANSITION_MS + 150}ms cubic-bezier(0.22,1,0.36,1) forwards` :
+            'none',
+          opacity: (phase === 'xp-in' || phase === 'xp-show' || phase === 'xp-out') ? 0 : 1,
+        }}
       >
-        <motion.div
-          key={rank.id}
-          initial={{ scale: 0.7, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{ type: 'spring', stiffness: 300, damping: 20 }}
-        >
-          <RankIcon tier={rank.tier} color={tierColor} size={42} />
-        </motion.div>
+        <RankIcon tier={rank.tier} color={tierColor} size={42} />
         <DivisionPips division={rank.division} color={tierColor} />
+      </div>
+
+      {/* XP delta — visible during xp-in / xp-show / xp-out */}
+      <div
+        style={{
+          position: 'absolute', inset: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          animation:
+            phase === 'xp-in'  ? `rankGrowIn ${TRANSITION_MS + 150}ms cubic-bezier(0.22,1,0.36,1) forwards` :
+            phase === 'xp-out' ? `rankFadeOut ${TRANSITION_MS}ms ease-in forwards` :
+            'none',
+          opacity: (phase === 'badge-show' || phase === 'badge-out' || phase === 'badge-in') ? 0 : 1,
+        }}
+      >
+        <XPDeltaFace xpDelta={xpDelta} color={tierColor} />
       </div>
 
       {showCapLock && <LockIcon color={lockColor} />}

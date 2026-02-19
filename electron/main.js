@@ -282,6 +282,28 @@ function checkDailyReset() {
     progressionUpdates.daily_modifier_type = modifierRoll < 0.6 ? 'standard' : modifierRoll < 0.9 ? 'warm' : 'hot'
 
     upsertSettings({ progressResetAt: resetTime, ...progressionUpdates })
+
+    // ── Auto-pull from Later to fill Today slots at reset ─────────
+    const currentRankId = settings.currentRankId ?? 'bronze_4'
+    const rank = getRankById(currentRankId)
+    const maxSlots = rank.taskSlots
+    const todayCountNow = db.prepare("SELECT COUNT(*) as n FROM tasks WHERE status = 'today'").get().n
+    const available = maxSlots - todayCountNow
+    if (available > 0) {
+      const laterTasks = db.prepare(
+        "SELECT id, \"order\" FROM tasks WHERE status = 'later' ORDER BY \"order\" ASC LIMIT ?"
+      ).all(available)
+      if (laterTasks.length > 0) {
+        const updateTask = db.prepare("UPDATE tasks SET status = 'today', movedToLaterAt = NULL WHERE id = ?")
+        const updateOrder = db.prepare("UPDATE tasks SET \"order\" = ? WHERE id = ?")
+        db.transaction(() => {
+          laterTasks.forEach((t, i) => {
+            updateTask.run(t.id)
+            updateOrder.run(todayCountNow + i, t.id)
+          })
+        })()
+      }
+    }
   }
 
   // Notify renderer to reload state after a daily reset

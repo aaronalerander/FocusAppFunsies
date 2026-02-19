@@ -203,15 +203,19 @@ const useTaskStore = create((set, get) => ({
     // Always add to Later by default, unless both Later and Today are empty
     const laterCount = tasks.filter(t => t.status === 'later').length
     const todayCount = tasks.filter(t => t.status === 'today').length
+    const maxSlots = get().taskSlots()
     let targetStatus = (laterCount === 0 && todayCount === 0) ? 'today' : 'later'
 
     // Slot limit enforcement for Today
     if (targetStatus === 'today') {
-      const maxSlots = get().taskSlots()
       if (todayCount >= maxSlots) {
         targetStatus = 'later'
-        get().showToast('Max tasks for today — finish shit to unlock more slots', 'warning')
       }
+    }
+
+    // Toast when task lands in Later because Today is full
+    if (targetStatus === 'later' && todayCount >= maxSlots) {
+      get().showToast('Max tasks for today — finish shit to unlock more slots', 'warning')
     }
 
     const statusCount = tasks.filter(t => t.status === targetStatus).length
