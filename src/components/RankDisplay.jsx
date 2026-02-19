@@ -2,10 +2,328 @@ import { motion } from 'framer-motion'
 import useTaskStore from '@/store/tasks'
 import { getRankById, getXPProgress, RANK_COLORS } from '@/utils/progression'
 
-const SIZE = 72
+const SIZE = 88
 const STROKE = 5
 const RADIUS = (SIZE - STROKE) / 2
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS
+
+// ── Rank Icons ────────────────────────────────────────────────────────
+// Apex Legends-inspired SVG emblems, drawn in a 40×40 viewBox.
+// Each icon is a stylized emblem with tier-specific geometry.
+
+function BronzeIcon({ color }) {
+  // Shield with simple horizontal bars — rough, entry-level feel
+  return (
+    <g>
+      {/* Outer shield */}
+      <path
+        d="M20 4 L34 10 L34 24 Q34 34 20 38 Q6 34 6 24 L6 10 Z"
+        fill="none"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
+      {/* Inner shield body fill */}
+      <path
+        d="M20 7 L31 12 L31 24 Q31 31 20 35 Q9 31 9 24 L9 12 Z"
+        fill={color}
+        opacity="0.15"
+      />
+      {/* Center notch */}
+      <path
+        d="M13 19 L20 15 L27 19 L27 25 L20 29 L13 25 Z"
+        fill={color}
+        opacity="0.5"
+      />
+    </g>
+  )
+}
+
+function SilverIcon({ color }) {
+  // Shield with angular wingtips — sleeker than bronze
+  return (
+    <g>
+      {/* Main shield */}
+      <path
+        d="M20 3 L35 10 L35 25 Q35 35 20 39 Q5 35 5 25 L5 10 Z"
+        fill="none"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
+      {/* Inner highlight lines */}
+      <path
+        d="M20 3 L35 10 L35 25 Q35 35 20 39 Q5 35 5 25 L5 10 Z"
+        fill={color}
+        opacity="0.12"
+      />
+      {/* Wing-like side cuts */}
+      <path
+        d="M5 14 L1 18 L5 22"
+        fill="none"
+        stroke={color}
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M35 14 L39 18 L35 22"
+        fill="none"
+        stroke={color}
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      {/* Center diamond pip */}
+      <path
+        d="M20 14 L25 20 L20 26 L15 20 Z"
+        fill={color}
+        opacity="0.7"
+      />
+    </g>
+  )
+}
+
+function GoldIcon({ color }) {
+  // Crowned shield — regal look
+  return (
+    <g>
+      {/* Crown points */}
+      <path
+        d="M8 11 L12 5 L20 10 L28 5 L32 11"
+        fill="none"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      {/* Shield body */}
+      <path
+        d="M8 11 L32 11 L32 26 Q32 36 20 40 Q8 36 8 26 Z"
+        fill={color}
+        opacity="0.15"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M8 11 L32 11 L32 26 Q32 36 20 40 Q8 36 8 26 Z"
+        fill="none"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
+      {/* Inner star */}
+      <path
+        d="M20 16 L21.8 21.5 L27.5 21.5 L22.9 24.8 L24.7 30.3 L20 27 L15.3 30.3 L17.1 24.8 L12.5 21.5 L18.2 21.5 Z"
+        fill={color}
+        opacity="0.75"
+      />
+    </g>
+  )
+}
+
+function PlatinumIcon({ color }) {
+  // Hexagonal shape with crosshatch — technical, futuristic
+  return (
+    <g>
+      {/* Outer hex */}
+      <path
+        d="M20 2 L36 11 L36 29 L20 38 L4 29 L4 11 Z"
+        fill="none"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
+      {/* Inner hex fill */}
+      <path
+        d="M20 6 L33 13 L33 27 L20 34 L7 27 L7 13 Z"
+        fill={color}
+        opacity="0.12"
+      />
+      {/* Diagonal cross lines */}
+      <line x1="10" y1="15" x2="30" y2="25" stroke={color} strokeWidth="1.2" opacity="0.4" />
+      <line x1="30" y1="15" x2="10" y2="25" stroke={color} strokeWidth="1.2" opacity="0.4" />
+      {/* Center circle */}
+      <circle cx="20" cy="20" r="5" fill={color} opacity="0.65" />
+      <circle cx="20" cy="20" r="3" fill="none" stroke={color} strokeWidth="1.5" />
+    </g>
+  )
+}
+
+function DiamondIcon({ color }) {
+  // Large diamond with inner facets — crystalline
+  return (
+    <g>
+      {/* Outer diamond */}
+      <path
+        d="M20 2 L38 20 L20 38 L2 20 Z"
+        fill="none"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
+      {/* Fill */}
+      <path
+        d="M20 2 L38 20 L20 38 L2 20 Z"
+        fill={color}
+        opacity="0.1"
+      />
+      {/* Facet lines from top */}
+      <line x1="20" y1="2" x2="9" y2="17" stroke={color} strokeWidth="1" opacity="0.4" />
+      <line x1="20" y1="2" x2="31" y2="17" stroke={color} strokeWidth="1" opacity="0.4" />
+      {/* Facet lines from bottom */}
+      <line x1="20" y1="38" x2="9" y2="23" stroke={color} strokeWidth="1" opacity="0.4" />
+      <line x1="20" y1="38" x2="31" y2="23" stroke={color} strokeWidth="1" opacity="0.4" />
+      {/* Middle horizon */}
+      <line x1="2" y1="20" x2="38" y2="20" stroke={color} strokeWidth="1" opacity="0.35" />
+      {/* Inner core diamond */}
+      <path
+        d="M20 12 L28 20 L20 28 L12 20 Z"
+        fill={color}
+        opacity="0.6"
+      />
+    </g>
+  )
+}
+
+function MasterIcon({ color }) {
+  // Ornate tri-wing insignia — elite feel
+  return (
+    <g>
+      {/* Left wing */}
+      <path
+        d="M20 20 L4 12 L2 20 L4 28 Z"
+        fill={color}
+        opacity="0.5"
+        strokeLinejoin="round"
+      />
+      {/* Right wing */}
+      <path
+        d="M20 20 L36 12 L38 20 L36 28 Z"
+        fill={color}
+        opacity="0.5"
+        strokeLinejoin="round"
+      />
+      {/* Top spike */}
+      <path
+        d="M20 20 L14 4 L20 8 L26 4 Z"
+        fill={color}
+        opacity="0.5"
+        strokeLinejoin="round"
+      />
+      {/* Central orb */}
+      <circle cx="20" cy="20" r="8" fill="none" stroke={color} strokeWidth="2" />
+      <circle cx="20" cy="20" r="5" fill={color} opacity="0.7" />
+      {/* Wing outlines */}
+      <path
+        d="M20 20 L4 12 L2 20 L4 28 Z"
+        fill="none"
+        stroke={color}
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M20 20 L36 12 L38 20 L36 28 Z"
+        fill="none"
+        stroke={color}
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M20 20 L14 4 L20 8 L26 4 Z"
+        fill="none"
+        stroke={color}
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+    </g>
+  )
+}
+
+function PredatorIcon({ color }) {
+  // Skull-like triple-point crown — apex predator
+  return (
+    <g>
+      {/* Outer glow ring */}
+      <circle cx="20" cy="20" r="16" fill="none" stroke={color} strokeWidth="1" opacity="0.3" />
+      {/* Three spike crown */}
+      <path
+        d="M20 4 L23 13 L29 6 L26 16 L36 13 L28 20 L36 27 L26 24 L29 34 L20 28 L11 34 L14 24 L4 27 L12 20 L4 13 L14 16 L11 6 L17 13 Z"
+        fill={color}
+        opacity="0.5"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M20 4 L23 13 L29 6 L26 16 L36 13 L28 20 L36 27 L26 24 L29 34 L20 28 L11 34 L14 24 L4 27 L12 20 L4 13 L14 16 L11 6 L17 13 Z"
+        fill="none"
+        stroke={color}
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+      {/* Inner skull-eye dots */}
+      <circle cx="16" cy="18" r="2.5" fill={color} />
+      <circle cx="24" cy="18" r="2.5" fill={color} />
+      {/* Fang mark */}
+      <path
+        d="M17 24 L20 28 L23 24"
+        fill="none"
+        stroke={color}
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </g>
+  )
+}
+
+const TIER_ICONS = {
+  bronze: BronzeIcon,
+  silver: SilverIcon,
+  gold: GoldIcon,
+  platinum: PlatinumIcon,
+  diamond: DiamondIcon,
+  master: MasterIcon,
+  predator: PredatorIcon,
+}
+
+function RankIcon({ tier, color, size = 40 }) {
+  const Icon = TIER_ICONS[tier] || BronzeIcon
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 40 40"
+      style={{ display: 'block', filter: `drop-shadow(0 0 4px ${color}88)` }}
+    >
+      <Icon color={color} />
+    </svg>
+  )
+}
+
+// Division pips: division 4 = lowest (1 pip filled), division 1 = highest (4 pips filled)
+// Pips fill left-to-right as you progress through divisions within a tier.
+function DivisionPips({ division, color }) {
+  if (!division || division === 0) return null // Master/Predator have no division pips
+  const totalPips = 4
+  // Division 4 → 1 pip filled, Division 3 → 2 filled, ..., Division 1 → 4 filled
+  const filledCount = 5 - division
+  return (
+    <div style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
+      {Array.from({ length: totalPips }, (_, i) => (
+        <div
+          key={i}
+          style={{
+            width: 5,
+            height: 5,
+            borderRadius: '50%',
+            backgroundColor: i < filledCount ? color : 'transparent',
+            border: `1.5px solid ${color}`,
+            opacity: i < filledCount ? 1 : 0.35,
+          }}
+        />
+      ))}
+    </div>
+  )
+}
 
 function LockIcon({ color }) {
   return (
@@ -36,13 +354,18 @@ export default function RankDisplay() {
 
   const offset = CIRCUMFERENCE - (progress.percentage / 100) * CIRCUMFERENCE
 
-  // Show cap-hit lock only when bleed hit the cap but board is NOT yet cleared (not free XP mode)
   const showCapLock = progression.bleedCapHitToday && !progression.boardClearedToday
   const lockColor = isDark ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.30)'
 
   return (
     <div className="relative" style={{ width: SIZE, height: SIZE }}>
-      <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`}>
+      {/* Circular XP progress ring */}
+      <svg
+        width={SIZE}
+        height={SIZE}
+        viewBox={`0 0 ${SIZE} ${SIZE}`}
+        style={{ position: 'absolute', inset: 0 }}
+      >
         {/* Track */}
         <circle
           cx={SIZE / 2}
@@ -68,26 +391,27 @@ export default function RankDisplay() {
           style={{
             transform: 'rotate(-90deg)',
             transformOrigin: '50% 50%',
+            filter: `drop-shadow(0 0 3px ${tierColor}88)`,
           }}
         />
       </svg>
 
-      {/* Center text */}
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span
-          className="text-[9px] font-sans font-bold tracking-wide leading-none"
-          style={{ color: tierColor }}
+      {/* Center: rank icon + division pips */}
+      <div
+        className="absolute inset-0 flex flex-col items-center justify-center"
+        style={{ gap: 4 }}
+      >
+        <motion.div
+          key={rank.id}
+          initial={{ scale: 0.7, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ type: 'spring', stiffness: 300, damping: 20 }}
         >
-          {rank.name}
-        </span>
-        <span className={`text-[8px] font-sans tabular-nums leading-tight mt-0.5 ${
-          isDark ? 'text-muted-dark' : 'text-muted-light'
-        }`}>
-          {progress.current.toLocaleString()}/{progress.needed.toLocaleString()}
-        </span>
+          <RankIcon tier={rank.tier} color={tierColor} size={42} />
+        </motion.div>
+        <DivisionPips division={rank.division} color={tierColor} />
       </div>
 
-      {/* Cap-hit lock — appears when daily bleed cap is reached (not in free XP mode) */}
       {showCapLock && <LockIcon color={lockColor} />}
     </div>
   )
