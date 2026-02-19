@@ -4,6 +4,24 @@ import useTaskStore from '@/store/tasks'
 import TaskItem from '@/components/TaskItem'
 import { getLogicalToday, getLogicalDay } from '@/utils/dateUtils'
 
+function XPBadge({ xp, isDark }) {
+  const isNeg = xp < 0
+  const label = isNeg ? `${xp} XP` : `+${xp} XP`
+  return (
+    <span
+      style={{
+        fontSize: 11,
+        fontWeight: 700,
+        fontVariantNumeric: 'tabular-nums',
+        letterSpacing: '-0.3px',
+        color: isNeg ? '#f87171' : isDark ? 'rgba(255,255,255,0.38)' : 'rgba(0,0,0,0.32)',
+      }}
+    >
+      {label}
+    </span>
+  )
+}
+
 function DeleteButton({ onClick, isDark }) {
   return (
     <button
@@ -59,8 +77,13 @@ function formatDayHeader(dateStr, resetHourUTC) {
   })
 }
 
-function DaySection({ dateStr, tasks, isDark, resetHourUTC, developerMode, onDelete }) {
+function DaySection({ dateStr, tasks, isDark, resetHourUTC, developerMode, onDelete, todayBleed, logicalToday }) {
   const [isOpen, setIsOpen] = useState(false)
+
+  const earnedXP = tasks.reduce((sum, t) => sum + (t.final_xp_awarded || 0), 0)
+  // Bleed is only tracked for the current logical day
+  const bleed = dateStr === logicalToday ? (todayBleed || 0) : 0
+  const xpDelta = earnedXP - bleed
 
   return (
     <div className={`border-b ${isDark ? 'border-border-dark' : 'border-border-light'}`}>
@@ -86,9 +109,12 @@ function DaySection({ dateStr, tasks, isDark, resetHourUTC, developerMode, onDel
             {formatDayHeader(dateStr, resetHourUTC)}
           </span>
         </div>
-        <span className={`text-xs font-sans tabular-nums ${isDark ? 'text-muted-dark' : 'text-muted-light'} opacity-60`}>
-          {tasks.length} task{tasks.length !== 1 ? 's' : ''}
-        </span>
+        <div className="flex items-center gap-3">
+          <XPBadge xp={xpDelta} isDark={isDark} />
+          <span className={`text-xs font-sans tabular-nums ${isDark ? 'text-muted-dark' : 'text-muted-light'} opacity-60`}>
+            {tasks.length} task{tasks.length !== 1 ? 's' : ''}
+          </span>
+        </div>
       </button>
 
       <AnimatePresence initial={false}>
@@ -125,8 +151,10 @@ export default function DoneView() {
   const theme = useTaskStore(s => s.settings.theme)
   const dailyResetHourUTC = useTaskStore(s => s.settings.dailyResetHourUTC) ?? 10
   const developerMode = useTaskStore(s => s.settings.developerMode ?? false)
+  const dailyBleedTotal = useTaskStore(s => s.progression.dailyBleedTotal || 0)
   const deleteTask = useTaskStore(s => s.deleteTask)
   const isDark = theme === 'dark'
+  const logicalToday = getLogicalToday(dailyResetHourUTC)
   const [page, setPage] = useState(1)
 
   // Group tasks by completion date (using logical day boundary)
@@ -174,6 +202,8 @@ export default function DoneView() {
             resetHourUTC={dailyResetHourUTC}
             developerMode={developerMode}
             onDelete={deleteTask}
+            todayBleed={dailyBleedTotal}
+            logicalToday={logicalToday}
           />
         ))}
 
