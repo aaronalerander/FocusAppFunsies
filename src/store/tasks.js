@@ -755,10 +755,31 @@ const useTaskStore = create((set, get) => ({
 
   updateTaskTag: async (id, tag) => {
     const normalized = tag && tag.trim() ? tag.trim() : null
-    set(state => ({
-      tasks: state.tasks.map(t => t.id === id ? { ...t, tag: normalized } : t)
-    }))
-    await window.focusAPI.tasks.update(id, { tag: normalized })
+    const state = get()
+    const task = state.tasks.find(t => t.id === id)
+    if (!task) return
+
+    if (normalized) {
+      // Move the tagged task to the bottom of its list by reassigning order values
+      const siblings = state.tasks
+        .filter(t => t.status === task.status && t.id !== id)
+        .sort((a, b) => a.order - b.order)
+      const reorderedIds = [...siblings.map(t => t.id), id]
+      set(s => ({
+        tasks: s.tasks.map(t => {
+          const idx = reorderedIds.indexOf(t.id)
+          const updates = idx !== -1 ? { order: idx } : {}
+          return t.id === id ? { ...t, tag: normalized, ...updates } : { ...t, ...updates }
+        })
+      }))
+      await window.focusAPI.tasks.update(id, { tag: normalized })
+      await window.focusAPI.tasks.reorder(reorderedIds)
+    } else {
+      set(s => ({
+        tasks: s.tasks.map(t => t.id === id ? { ...t, tag: normalized } : t)
+      }))
+      await window.focusAPI.tasks.update(id, { tag: normalized })
+    }
   }
 }))
 

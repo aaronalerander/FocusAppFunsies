@@ -231,8 +231,8 @@ export default function TaskItem({ task, dragHandleProps }) {
               title="Edit tag"
               className={`rounded px-2 py-0.5 text-xs font-sans font-medium leading-none transition-opacity hover:opacity-80 ${isHovered ? 'opacity-100' : 'opacity-50'}`}
               style={{
-                background: getTagColor(task.tag).bg,
-                color: getTagColor(task.tag).text,
+                background: getTagColor(task.tag).bg + '33',
+                color: getTagColor(task.tag).bg,
                 height: 22,
               }}
             >
@@ -311,8 +311,8 @@ export default function TaskItem({ task, dragHandleProps }) {
         <span
           className="rounded px-2 py-0.5 text-xs font-sans font-medium leading-none flex-shrink-0 opacity-60"
           style={{
-            background: getTagColor(task.tag).bg,
-            color: getTagColor(task.tag).text,
+            background: getTagColor(task.tag).bg + '33',
+            color: getTagColor(task.tag).bg,
             height: 22,
             display: 'flex',
             alignItems: 'center',

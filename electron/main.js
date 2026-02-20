@@ -507,6 +507,15 @@ let bleedIntervalId = null
 
 function startBleedInterval() {
   if (bleedIntervalId) clearInterval(bleedIntervalId)
+
+  // Seed last_bleed_applied_at if it has never been set (new install or
+  // pre-bleed install). Without this the null guard in applyBleedTick()
+  // prevents the engine from ever firing.
+  const bootstrapSettings = readSettings()
+  if (!bootstrapSettings.last_bleed_applied_at) {
+    upsertSettings({ last_bleed_applied_at: new Date().toISOString() })
+  }
+
   bleedIntervalId = setInterval(() => {
     const result = applyBleedTick()
     if (result && mainWindow && !mainWindow.isDestroyed()) {

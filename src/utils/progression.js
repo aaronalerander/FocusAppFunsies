@@ -6,41 +6,41 @@
 // penaltyCap = max XP loss per daily reset (from PRD tier caps).
 
 export const RANKS = [
-  // Bronze — penaltyCap: 100
-  { id: 'bronze_4', name: 'Bronze IV',    tier: 'bronze',   division: 4, xpRequired: 0,       xpToNext: 500,     taskSlots: 3,  penaltyCap: 100 },
-  { id: 'bronze_3', name: 'Bronze III',   tier: 'bronze',   division: 3, xpRequired: 500,     xpToNext: 800,     taskSlots: 4,  penaltyCap: 100 },
-  { id: 'bronze_2', name: 'Bronze II',    tier: 'bronze',   division: 2, xpRequired: 1300,    xpToNext: 1100,    taskSlots: 5,  penaltyCap: 100 },
-  { id: 'bronze_1', name: 'Bronze I',     tier: 'bronze',   division: 1, xpRequired: 2400,    xpToNext: 1500,    taskSlots: 6,  penaltyCap: 100 },
+  // Bronze — penaltyCap: 300
+  { id: 'bronze_4', name: 'Bronze IV',    tier: 'bronze',   division: 4, xpRequired: 0,       xpToNext: 500,     taskSlots: 3,  penaltyCap: 300 },
+  { id: 'bronze_3', name: 'Bronze III',   tier: 'bronze',   division: 3, xpRequired: 500,     xpToNext: 800,     taskSlots: 4,  penaltyCap: 300 },
+  { id: 'bronze_2', name: 'Bronze II',    tier: 'bronze',   division: 2, xpRequired: 1300,    xpToNext: 1100,    taskSlots: 5,  penaltyCap: 300 },
+  { id: 'bronze_1', name: 'Bronze I',     tier: 'bronze',   division: 1, xpRequired: 2400,    xpToNext: 1500,    taskSlots: 6,  penaltyCap: 300 },
 
-  // Silver — penaltyCap: 150
-  { id: 'silver_4', name: 'Silver IV',    tier: 'silver',   division: 4, xpRequired: 3900,    xpToNext: 3000,    taskSlots: 7,  penaltyCap: 150 },
-  { id: 'silver_3', name: 'Silver III',   tier: 'silver',   division: 3, xpRequired: 6900,    xpToNext: 3500,    taskSlots: 7,  penaltyCap: 150 },
-  { id: 'silver_2', name: 'Silver II',    tier: 'silver',   division: 2, xpRequired: 10400,   xpToNext: 4500,    taskSlots: 8,  penaltyCap: 150 },
-  { id: 'silver_1', name: 'Silver I',     tier: 'silver',   division: 1, xpRequired: 14900,   xpToNext: 5500,    taskSlots: 8,  penaltyCap: 150 },
+  // Silver — penaltyCap: 400
+  { id: 'silver_4', name: 'Silver IV',    tier: 'silver',   division: 4, xpRequired: 3900,    xpToNext: 3000,    taskSlots: 7,  penaltyCap: 400 },
+  { id: 'silver_3', name: 'Silver III',   tier: 'silver',   division: 3, xpRequired: 6900,    xpToNext: 3500,    taskSlots: 7,  penaltyCap: 400 },
+  { id: 'silver_2', name: 'Silver II',    tier: 'silver',   division: 2, xpRequired: 10400,   xpToNext: 4500,    taskSlots: 8,  penaltyCap: 400 },
+  { id: 'silver_1', name: 'Silver I',     tier: 'silver',   division: 1, xpRequired: 14900,   xpToNext: 5500,    taskSlots: 8,  penaltyCap: 400 },
 
-  // Gold — penaltyCap: 200
-  { id: 'gold_4',   name: 'Gold IV',      tier: 'gold',     division: 4, xpRequired: 20400,   xpToNext: 7500,    taskSlots: 9,  penaltyCap: 200 },
-  { id: 'gold_3',   name: 'Gold III',     tier: 'gold',     division: 3, xpRequired: 27900,   xpToNext: 9000,    taskSlots: 9,  penaltyCap: 200 },
-  { id: 'gold_2',   name: 'Gold II',      tier: 'gold',     division: 2, xpRequired: 36900,   xpToNext: 11000,   taskSlots: 9,  penaltyCap: 200 },
-  { id: 'gold_1',   name: 'Gold I',       tier: 'gold',     division: 1, xpRequired: 47900,   xpToNext: 13500,   taskSlots: 10, penaltyCap: 200 },
+  // Gold — penaltyCap: 500
+  { id: 'gold_4',   name: 'Gold IV',      tier: 'gold',     division: 4, xpRequired: 20400,   xpToNext: 7500,    taskSlots: 9,  penaltyCap: 500 },
+  { id: 'gold_3',   name: 'Gold III',     tier: 'gold',     division: 3, xpRequired: 27900,   xpToNext: 9000,    taskSlots: 9,  penaltyCap: 500 },
+  { id: 'gold_2',   name: 'Gold II',      tier: 'gold',     division: 2, xpRequired: 36900,   xpToNext: 11000,   taskSlots: 9,  penaltyCap: 500 },
+  { id: 'gold_1',   name: 'Gold I',       tier: 'gold',     division: 1, xpRequired: 47900,   xpToNext: 13500,   taskSlots: 10, penaltyCap: 500 },
 
-  // Platinum — penaltyCap: 250
-  { id: 'plat_4',   name: 'Platinum IV',  tier: 'platinum', division: 4, xpRequired: 61400,   xpToNext: 25000,   taskSlots: 12, penaltyCap: 250 },
-  { id: 'plat_3',   name: 'Platinum III', tier: 'platinum', division: 3, xpRequired: 86400,   xpToNext: 30000,   taskSlots: 12, penaltyCap: 250 },
-  { id: 'plat_2',   name: 'Platinum II',  tier: 'platinum', division: 2, xpRequired: 116400,  xpToNext: 37000,   taskSlots: 12, penaltyCap: 250 },
-  { id: 'plat_1',   name: 'Platinum I',   tier: 'platinum', division: 1, xpRequired: 153400,  xpToNext: 45000,   taskSlots: 14, penaltyCap: 250 },
+  // Platinum — penaltyCap: 650
+  { id: 'plat_4',   name: 'Platinum IV',  tier: 'platinum', division: 4, xpRequired: 61400,   xpToNext: 25000,   taskSlots: 12, penaltyCap: 650 },
+  { id: 'plat_3',   name: 'Platinum III', tier: 'platinum', division: 3, xpRequired: 86400,   xpToNext: 30000,   taskSlots: 12, penaltyCap: 650 },
+  { id: 'plat_2',   name: 'Platinum II',  tier: 'platinum', division: 2, xpRequired: 116400,  xpToNext: 37000,   taskSlots: 12, penaltyCap: 650 },
+  { id: 'plat_1',   name: 'Platinum I',   tier: 'platinum', division: 1, xpRequired: 153400,  xpToNext: 45000,   taskSlots: 14, penaltyCap: 650 },
 
-  // Diamond — penaltyCap: 300
-  { id: 'diamond_4', name: 'Diamond IV',  tier: 'diamond',  division: 4, xpRequired: 198400,  xpToNext: 55000,   taskSlots: 17, penaltyCap: 300 },
-  { id: 'diamond_3', name: 'Diamond III', tier: 'diamond',  division: 3, xpRequired: 253400,  xpToNext: 70000,   taskSlots: 17, penaltyCap: 300 },
-  { id: 'diamond_2', name: 'Diamond II',  tier: 'diamond',  division: 2, xpRequired: 323400,  xpToNext: 90000,   taskSlots: 17, penaltyCap: 300 },
-  { id: 'diamond_1', name: 'Diamond I',   tier: 'diamond',  division: 1, xpRequired: 413400,  xpToNext: 120000,  taskSlots: 20, penaltyCap: 300 },
+  // Diamond — penaltyCap: 800
+  { id: 'diamond_4', name: 'Diamond IV',  tier: 'diamond',  division: 4, xpRequired: 198400,  xpToNext: 55000,   taskSlots: 17, penaltyCap: 800 },
+  { id: 'diamond_3', name: 'Diamond III', tier: 'diamond',  division: 3, xpRequired: 253400,  xpToNext: 70000,   taskSlots: 17, penaltyCap: 800 },
+  { id: 'diamond_2', name: 'Diamond II',  tier: 'diamond',  division: 2, xpRequired: 323400,  xpToNext: 90000,   taskSlots: 17, penaltyCap: 800 },
+  { id: 'diamond_1', name: 'Diamond I',   tier: 'diamond',  division: 1, xpRequired: 413400,  xpToNext: 120000,  taskSlots: 20, penaltyCap: 800 },
 
-  // Master — penaltyCap: 350
-  { id: 'master',    name: 'Master',      tier: 'master',   division: 0, xpRequired: 533400,  xpToNext: 300000,  taskSlots: 20, penaltyCap: 350 },
+  // Master — penaltyCap: 1000
+  { id: 'master',    name: 'Master',      tier: 'master',   division: 0, xpRequired: 533400,  xpToNext: 300000,  taskSlots: 20, penaltyCap: 1000 },
 
-  // Predator — penaltyCap: 400
-  { id: 'predator',  name: 'Predator',    tier: 'predator', division: 0, xpRequired: 833400,  xpToNext: null,    taskSlots: 20, penaltyCap: 400 },
+  // Predator — penaltyCap: 1200
+  { id: 'predator',  name: 'Predator',    tier: 'predator', division: 0, xpRequired: 833400,  xpToNext: null,    taskSlots: 20, penaltyCap: 1200 },
 ]
 
 // ── Streak Multipliers ──────────────────────────────────────────────
@@ -256,7 +256,7 @@ export function calculateTaskXPWithMultiplier(tasksCompletedToday, streakMultipl
 
 // ── Hourly XP Bleed Utilities ────────────────────────────────────────────────
 
-const BLEED_BASE_RATE = 1.5  // XP/hour — tunable config constant
+const BLEED_BASE_RATE = 6  // XP/hour — tunable config constant
 
 /**
  * Determine which bleed phase (1, 2, or 3) the current moment falls in,
@@ -300,7 +300,7 @@ export function getBleedPhase(nowMs, resetHourUTC) {
 
 /**
  * Calculate XP bleed for one minute (float, may be < 1).
- * Formula: hourly_bleed = BLEED_BASE_RATE × phaseMultiplier × (tasksRemaining ^ 1.25)
+ * Formula: hourly_bleed = BLEED_BASE_RATE × phaseMultiplier × (tasksRemaining ^ 1.5)
  * Per-minute = hourly / 60
  *
  * The caller accumulates the fraction and applies only whole-number XP.
@@ -311,7 +311,7 @@ export function getBleedPhase(nowMs, resetHourUTC) {
  */
 export function calculateBleedTick(tasksRemaining, phaseMultiplier) {
   if (tasksRemaining <= 0) return 0
-  const hourlyBleed = BLEED_BASE_RATE * phaseMultiplier * Math.pow(tasksRemaining, 1.25)
+  const hourlyBleed = BLEED_BASE_RATE * phaseMultiplier * Math.pow(tasksRemaining, 1.5)
   return hourlyBleed / 60
 }
 
