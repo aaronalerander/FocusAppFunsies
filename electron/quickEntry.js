@@ -35,38 +35,43 @@ function safeSend(channel, ...args) {
 }
 
 /**
- * Create a 16x16 template image for the macOS menu bar.
- * Draws a "+" icon using raw RGBA pixel data.
- * Marked as template so macOS auto-inverts for dark/light menu bar.
+ * Create a tray icon.
+ * On macOS: 16x16 template image (auto-inverts for dark/light menu bar).
+ * On Windows: 16x16 white "+" on transparent background (shows in system tray).
  */
 function createTrayIcon() {
   const size = 16
+  const isMac = process.platform === 'darwin'
 
-  // Create RGBA buffer — draw a "+" with black pixels on transparent background
+  // Create RGBA buffer — draw a "+" icon
   const buf = Buffer.alloc(size * size * 4, 0) // all transparent
 
-  function setPixel(x, y, a = 255) {
+  function setPixel(x, y, r, g, b, a = 255) {
     if (x < 0 || x >= size || y < 0 || y >= size) return
     const i = (y * size + x) * 4
-    buf[i] = 0       // R
-    buf[i + 1] = 0   // G
-    buf[i + 2] = 0   // B
-    buf[i + 3] = a   // A
+    buf[i] = r
+    buf[i + 1] = g
+    buf[i + 2] = b
+    buf[i + 3] = a
   }
+
+  // On macOS use black pixels (template image inverts automatically).
+  // On Windows use white pixels so the icon is visible on the dark taskbar.
+  const [r, g, b] = isMac ? [0, 0, 0] : [255, 255, 255]
 
   // Vertical bar of "+" : x=7,8 from y=3 to y=12
   for (let y = 3; y <= 12; y++) {
-    setPixel(7, y)
-    setPixel(8, y)
+    setPixel(7, y, r, g, b)
+    setPixel(8, y, r, g, b)
   }
   // Horizontal bar of "+" : y=7,8 from x=3 to x=12
   for (let x = 3; x <= 12; x++) {
-    setPixel(x, 7)
-    setPixel(x, 8)
+    setPixel(x, 7, r, g, b)
+    setPixel(x, 8, r, g, b)
   }
 
   const img = nativeImage.createFromBuffer(buf, { width: size, height: size })
-  img.setTemplateImage(true)
+  if (isMac) img.setTemplateImage(true)
   return img
 }
 
@@ -99,6 +104,7 @@ export function createQuickEntryWindow() {
   }
 
   // ── Quick-entry window ────────────────────────────────────
+  const isMac = process.platform === 'darwin'
   quickEntryWindow = new BrowserWindow({
     width: WIN_WIDTH,
     height: WIN_HEIGHT,
@@ -113,7 +119,7 @@ export function createQuickEntryWindow() {
     hasShadow: false,
     show: false,
     focusable: true,
-    type: 'panel',
+    ...(isMac ? { type: 'panel' } : {}),
     webPreferences: {
       preload: join(__dirname, 'preload-quick-entry.cjs'),
       contextIsolation: true,
@@ -122,9 +128,13 @@ export function createQuickEntryWindow() {
     },
   })
 
-  // Panel properties for macOS: float above everything, visible on all Spaces
-  quickEntryWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
-  quickEntryWindow.setAlwaysOnTop(true, 'floating')
+  // Float above everything, visible on all Spaces/desktops
+  if (isMac) {
+    quickEntryWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+    quickEntryWindow.setAlwaysOnTop(true, 'floating')
+  } else {
+    quickEntryWindow.setAlwaysOnTop(true, 'screen-saver')
+  }
 
   webContentsReady = false
   quickEntryWindow.webContents.on('did-finish-load', () => {
@@ -168,9 +178,13 @@ export function showQuickEntry() {
   const bounds = getWindowBounds(WIN_HEIGHT)
   quickEntryWindow.setBounds(bounds)
 
-  // Re-assert panel properties before showing
-  quickEntryWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
-  quickEntryWindow.setAlwaysOnTop(true, 'floating')
+  // Re-assert always-on-top before showing
+  if (process.platform === 'darwin') {
+    quickEntryWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+    quickEntryWindow.setAlwaysOnTop(true, 'floating')
+  } else {
+    quickEntryWindow.setAlwaysOnTop(true, 'screen-saver')
+  }
 
   quickEntryWindow.showInactive()
   quickEntryWindow.focus()
