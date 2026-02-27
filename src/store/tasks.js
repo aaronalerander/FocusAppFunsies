@@ -318,6 +318,7 @@ const useTaskStore = create((set, get) => ({
             xpAmount,
             taskText: task.text,
             taskId: id,
+            isFreeXP: isFreeXPTask,
           },
           pendingSlotMachineResolve: resolve,
         }
@@ -358,9 +359,13 @@ const useTaskStore = create((set, get) => ({
       // Sound is tier-differentiated — Pavlovian conditioning layer
       if (get().settings.soundEnabled) playCompletionSoundByTier(multiplierRoll.id, isAllDone)
 
-      setTimeout(() => {
-        set(state => ({ ui: { ...state.ui, confetti: { mode, id: Date.now(), isFreeXP: isFreeXPTask, multiplierTierId: multiplierRoll.id } } }))
-      }, 600)
+      // allDone board-clear burst fires after the slot machine exits
+      // Normal tier confetti is fired by SlotMachine itself the moment the reel locks
+      if (isAllDone) {
+        setTimeout(() => {
+          set(state => ({ ui: { ...state.ui, confetti: { mode: 'allDone', id: Date.now(), isFreeXP: isFreeXPTask, multiplierTierId: multiplierRoll.id } } }))
+        }, 600)
+      }
 
       // ── XP Award ──────────────────────────────────────────────
       const newTasksCompleted = tasksCompletedToday + 1
@@ -595,17 +600,28 @@ const useTaskStore = create((set, get) => ({
       window.focusAPI.progression.removeFreeXPTask(id)
     }
 
+    const wasDone = task?.status === 'done'
+
     set(state => ({
       tasks: state.tasks.filter(t => t.id !== id),
-      ui: { ...state.ui, confirmDeleteId: null }
+      ui: { ...state.ui, confirmDeleteId: null },
+      // Optimistically decrement lifetime counter if deleting a completed task
+      settings: wasDone
+        ? { ...state.settings, lifetimeCompleted: Math.max(0, (state.settings.lifetimeCompleted ?? 0) - 1) }
+        : state.settings,
     }))
     await window.focusAPI.tasks.delete(id)
+
+    // Decrement lifetime counter in DB if this was a completed task
+    if (wasDone) {
+      await window.focusAPI.lifetime.decrement()
+    }
 
     // Deduct all XP this task contributed:
     //   creation_xp_awarded — always present (awarded when the task was created)
     //   final_xp_awarded    — only present if the task was completed
     const creationXP = task?.creation_xp_awarded ?? 0
-    const completionXP = task?.status === 'done' ? (task?.final_xp_awarded ?? 0) : 0
+    const completionXP = wasDone ? (task?.final_xp_awarded ?? 0) : 0
     const totalDeduct = creationXP + completionXP
 
     if (totalDeduct > 0) {
@@ -751,6 +767,15 @@ const useTaskStore = create((set, get) => ({
       },
       ui: { ...get().ui, isSettingsOpen: false },
     })
+  },
+
+  updateTaskText: async (id, text) => {
+    const trimmed = text && text.trim()
+    if (!trimmed) return
+    set(s => ({
+      tasks: s.tasks.map(t => t.id === id ? { ...t, text: trimmed } : t)
+    }))
+    await window.focusAPI.tasks.update(id, { text: trimmed })
   },
 
   updateTaskTag: async (id, tag) => {

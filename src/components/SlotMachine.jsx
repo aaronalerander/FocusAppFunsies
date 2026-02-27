@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import useTaskStore from '@/store/tasks'
 import { MULTIPLIER_TIERS } from '@/utils/progression'
+import { fireTier } from '@/components/Confetti'
 import {
   playSlotEntrance,
   playSlotLock,
@@ -12,27 +13,30 @@ import {
   playSlotResultMythic,
 } from '@/hooks/useSound'
 
-// ── Layout constants ───────────────────────────────────────────────────────
-const ITEM_W    = 82          // card width px
-const ITEM_H    = 82          // card height px
-const ITEM_GAP  = 6           // gap between cards px
-const ITEM_STEP = ITEM_W + ITEM_GAP  // 88px per slot
-const VISIBLE   = 7           // visible items (odd for symmetry)
-const CONTAINER_W = ITEM_STEP * VISIBLE - ITEM_GAP  // 610px
+// ── Strip constants (dimension-independent) ────────────────────────────────
+const WIN_INDEX  = 45              // winner sits at this index in the strip
+const SLOW_START = WIN_INDEX - 10  // slow-phase starts here (10 items of crawl)
+const ENTRANCE_DELAY = 900         // ms — matches container fade-in
 
-// The winner lives at this fixed index in the strip
-const WIN_INDEX = 38
+// ── Two-phase RAF easing ───────────────────────────────────────────────────
+// Phase 1 (0–FAST_T):  linear blur, covers FAST_D of the total distance
+// Phase 2 (FAST_T–1):  quintic ease-out hard-brakes through the last 10 items
+const FAST_T = 0.58
+const FAST_D = 0.80
 
-// Delay before spin starts (matches the container animate-in timing)
-const ENTRANCE_DELAY = 900  // ms
+function easeProgress(t) {
+  if (t <= FAST_T) return (t / FAST_T) * FAST_D
+  const s = (t - FAST_T) / (1 - FAST_T)
+  return FAST_D + (1 - Math.pow(1 - s, 5)) * (1 - FAST_D)
+}
 
-// ── Tier config ────────────────────────────────────────────────────────────
+// ── Timing ─────────────────────────────────────────────────────────────────
 const TIER_DURATION = {
-  common:    3000,
-  rare:      3200,
-  epic:      3400,
-  legendary: 3800,
-  mythic:    4200,
+  common:    5000,
+  rare:      6500,
+  epic:      8000,
+  legendary: 10000,
+  mythic:    13000,
 }
 
 const TIER_HOLD = {
@@ -51,8 +55,7 @@ const TIER_RESULT_SOUNDS = {
   mythic:    playSlotResultMythic,
 }
 
-// ── Item pool shown during the spin ───────────────────────────────────────
-// High-value items appear frequently so the near-miss feel is strong
+// ── Item pool ──────────────────────────────────────────────────────────────
 const SPIN_SEQUENCE = [
   { id: 'common',    value: '1x',   color: '#888888' },
   { id: 'rare',      value: '1.5x', color: '#4A9EFF' },
@@ -78,186 +81,284 @@ function getTierByOffset(targetId, offset) {
   return MULTIPLIER_TIERS[Math.max(0, Math.min(idx + offset, MULTIPLIER_TIERS.length - 1))]
 }
 
-// Generate the horizontal strip:
-// – Random items fill most of the pre-winner space
-// – Two near-miss items (one tier above winner) sit just before the winner
-//   so the strip naturally slows past them before settling
-// – A few filler items follow the winner so the strip doesn't dead-end
+// ── Strip generation ───────────────────────────────────────────────────────
+//  0–26 : random blur
+// 27–30 : excitement tease (2 tiers above winner) — adrenaline spike mid-spin
+// 31–40 : random filler   (31–35 fast, 36–40 enter slow zone)
+// 41–44 : near-miss ×4    (1 tier above winner — dwell in center one by one)
+//    45 : winner
+// 46–49 : post-filler
 function generateStrip(winningTierId) {
   const winTier  = MULTIPLIER_TIERS.find(t => t.id === winningTierId)
   const winner   = tierToDisplayItem(winTier)
   const nearMiss = tierToDisplayItem(getTierByOffset(winningTierId, +1))
+  const tease    = tierToDisplayItem(getTierByOffset(winningTierId, +2))
   const startOff = Math.floor(Math.random() * SPIN_SEQUENCE.length)
 
   const items = []
-  for (let i = 0; i < WIN_INDEX - 2; i++) {
-    items.push(SPIN_SEQUENCE[(startOff + i) % SPIN_SEQUENCE.length])
-  }
-  items.push(nearMiss)  // WIN_INDEX - 2 │ near-miss frame 1
-  items.push(nearMiss)  // WIN_INDEX - 1 │ near-miss frame 2
-  items.push(winner)    // WIN_INDEX     │ the actual winner
-  for (let i = 0; i < 4; i++) {
-    items.push(SPIN_SEQUENCE[(startOff + i) % SPIN_SEQUENCE.length])
-  }
+  for (let i = 0; i < 27; i++) items.push(SPIN_SEQUENCE[(startOff + i) % SPIN_SEQUENCE.length])
+  for (let i = 0; i < 4;  i++) items.push(tease)
+  for (let i = 0; i < 10; i++) items.push(SPIN_SEQUENCE[(startOff + 27 + i) % SPIN_SEQUENCE.length])
+  for (let i = 0; i < 4;  i++) items.push(nearMiss)
+  items.push(winner)
+  for (let i = 0; i < 4;  i++) items.push(SPIN_SEQUENCE[(startOff + i) % SPIN_SEQUENCE.length])
   return items
 }
 
-// ── Single horizontal crate reel ──────────────────────────────────────────
+// ── Crate reel ─────────────────────────────────────────────────────────────
 function CrateReel({ landingTierId, totalDuration, onLocked }) {
-  const stripRef    = useRef(null)
+  const stripRef      = useRef(null)
+  const selectorRef   = useRef(null)   // near-miss glow — direct DOM
+  const animFrameRef  = useRef(null)
   const [locked, setLocked] = useState(false)
-  const strip       = useMemo(() => generateStrip(landingTierId), [landingTierId])
-  const landingTier = MULTIPLIER_TIERS.find(t => t.id === landingTierId)
 
-  // translateX that puts the WIN_INDEX card exactly in the center
-  const finalX = CONTAINER_W / 2 - (WIN_INDEX * ITEM_STEP + ITEM_W / 2)
+  const strip        = useMemo(() => generateStrip(landingTierId), [landingTierId])
+  const landingTier  = MULTIPLIER_TIERS.find(t => t.id === landingTierId)
+  const nearMissTier = getTierByOffset(landingTierId, +1)
+
+  // ── Viewport-relative dimensions, computed once at mount ─────────────────
+  // Cards are tall portrait slabs that take up ~65% of screen height.
+  // The strip spans the full viewport width for a cinematic edge-to-edge feel.
+  const dims = useMemo(() => {
+    const itemH    = Math.min(Math.round(window.innerHeight * 0.65), 500)
+    const itemW    = Math.round(itemH * 0.36)   // ~1:2.78 portrait ratio
+    const gap      = 10
+    const step     = itemW + gap
+    const cw       = window.innerWidth           // full-width container
+    const arrowSz  = Math.max(12, Math.round(itemH * 0.026))
+    const vigW     = Math.min(Math.round(cw * 0.18), 230)
+    const valFont  = Math.round(itemH * 0.17)
+    const lblFont  = Math.max(11, Math.round(itemH * 0.031))
+    return { itemH, itemW, gap, step, cw, arrowSz, vigW, valFont, lblFont }
+  }, [])
+
+  const { itemH, itemW, gap, step, cw, arrowSz, vigW, valFont, lblFont } = dims
+
+  // translateX that places WIN_INDEX card exactly in the viewport center
+  const finalX = cw / 2 - (WIN_INDEX * step + itemW / 2)
+
+  // Scale value font down for longer strings so text fits the card width
+  function getValFontSize(value) {
+    if (value.length <= 2) return valFont
+    if (value.length === 3) return Math.round(valFont * 0.82)
+    return Math.round(valFont * 0.65)   // 4 chars: "1.5x", "3.5x"
+  }
 
   useEffect(() => {
     const el = stripRef.current
     if (!el) return
 
-    let startTimer, lockTimer
+    const startTimer = setTimeout(() => {
+      const startTime = performance.now()
 
-    startTimer = setTimeout(() => {
-      // Set explicit start state → force reflow → add transition → set end state
-      el.style.transform = 'translateX(0)'
-      void el.getBoundingClientRect()
-      el.style.transition = `transform ${totalDuration}ms cubic-bezier(0.12, 0.82, 0.2, 1)`
-      el.style.transform  = `translateX(${finalX}px)`
+      function tick(now) {
+        const elapsed = now - startTime
+        const t       = Math.min(elapsed / totalDuration, 1)
+        const frac    = easeProgress(t)
+        const currentX = finalX * frac
+
+        el.style.transform = `translateX(${currentX}px)`
+
+        // During slow phase: light up the selector when a near-miss fills the center
+        if (t > FAST_T && selectorRef.current) {
+          const centerIdx  = Math.round((cw / 2 - itemW / 2 - currentX) / step)
+          const idx        = Math.max(0, Math.min(centerIdx, strip.length - 1))
+          const centerItem = strip[idx]
+          const isNearMiss = centerItem &&
+            centerItem.id === nearMissTier.id &&
+            centerItem.id !== landingTierId
+
+          const sel = selectorRef.current
+          if (isNearMiss) {
+            sel.style.borderColor = centerItem.color + 'ee'
+            sel.style.boxShadow   =
+              `0 0 0 2px ${centerItem.color}44, ` +
+              `0 0 40px ${centerItem.color}88, ` +
+              `inset 0 0 30px ${centerItem.color}22`
+            sel.style.opacity = '1'
+          } else {
+            sel.style.borderColor = 'rgba(255,255,255,0.2)'
+            sel.style.boxShadow   = 'none'
+            sel.style.opacity     = '1'   // always visible — shows landing zone
+          }
+        }
+
+        if (t < 1) {
+          animFrameRef.current = requestAnimationFrame(tick)
+        } else {
+          el.style.transform = `translateX(${finalX}px)`
+          setLocked(true)
+          onLocked?.()
+        }
+      }
+
+      animFrameRef.current = requestAnimationFrame(tick)
     }, ENTRANCE_DELAY)
-
-    lockTimer = setTimeout(() => {
-      setLocked(true)
-      onLocked?.()
-    }, ENTRANCE_DELAY + totalDuration)
 
     return () => {
       clearTimeout(startTimer)
-      clearTimeout(lockTimer)
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current)
     }
   }, [])
 
   return (
     <div
       style={{
-        width: CONTAINER_W,
-        height: ITEM_H + 24,  // 12px above + 12px below for indicator arrows
+        width: cw,
+        height: itemH + arrowSz * 2 + 4,
         overflow: 'hidden',
         position: 'relative',
-        borderRadius: 14,
-        background: 'rgba(0,0,0,0.35)',
-        border: '1px solid rgba(255,255,255,0.08)',
+        background: 'rgba(0,0,0,0.3)',
       }}
     >
-      {/* Top indicator arrow — points down toward the center line */}
-      <div
-        style={{
-          position: 'absolute', left: '50%', top: 0, zIndex: 20,
-          transform: 'translateX(-50%)',
-          width: 0, height: 0,
-          borderLeft: '7px solid transparent',
-          borderRight: '7px solid transparent',
-          borderTop: '11px solid rgba(255,255,255,0.85)',
-        }}
-      />
+      {/* Top indicator arrow */}
+      <div style={{
+        position: 'absolute', left: '50%', top: 0, zIndex: 30,
+        transform: 'translateX(-50%)',
+        width: 0, height: 0,
+        borderLeft:  `${arrowSz * 0.7}px solid transparent`,
+        borderRight: `${arrowSz * 0.7}px solid transparent`,
+        borderTop:   `${arrowSz}px solid rgba(255,255,255,0.9)`,
+      }} />
 
-      {/* Bottom indicator arrow — points up toward the center line */}
-      <div
-        style={{
-          position: 'absolute', left: '50%', bottom: 0, zIndex: 20,
-          transform: 'translateX(-50%)',
-          width: 0, height: 0,
-          borderLeft: '7px solid transparent',
-          borderRight: '7px solid transparent',
-          borderBottom: '11px solid rgba(255,255,255,0.85)',
-        }}
-      />
+      {/* Bottom indicator arrow */}
+      <div style={{
+        position: 'absolute', left: '50%', bottom: 0, zIndex: 30,
+        transform: 'translateX(-50%)',
+        width: 0, height: 0,
+        borderLeft:  `${arrowSz * 0.7}px solid transparent`,
+        borderRight: `${arrowSz * 0.7}px solid transparent`,
+        borderBottom: `${arrowSz}px solid rgba(255,255,255,0.9)`,
+      }} />
 
-      {/* Scrolling item strip */}
+      {/* Scrolling strip */}
       <div
         ref={stripRef}
         style={{
           display: 'flex',
-          gap: ITEM_GAP,
+          gap,
           position: 'absolute',
-          top: 12,
+          top: arrowSz + 2,
           left: 0,
           willChange: 'transform',
         }}
       >
-        {strip.map((item, i) => (
-          <div
-            key={i}
-            style={{
-              width: ITEM_W,
-              height: ITEM_H,
-              flexShrink: 0,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              borderRadius: 10,
-              background: `linear-gradient(135deg, ${item.color}18 0%, rgba(0,0,0,0.5) 100%)`,
-              border: `1px solid ${item.color}40`,
-            }}
-          >
-            <span
+        {strip.map((item, i) => {
+          const label = MULTIPLIER_TIERS.find(t => t.id === item.id)?.label ?? item.id
+          const isHigh = item.id === 'legendary' || item.id === 'mythic'
+          return (
+            <div
+              key={i}
               style={{
-                color: item.color,
-                fontWeight: 700,
-                fontSize: item.value.length > 3 ? 20 : 24,
-                fontFamily: 'var(--font-display, sans-serif)',
-                textShadow: (item.id === 'legendary' || item.id === 'mythic')
-                  ? `0 0 12px ${item.color}88`
-                  : 'none',
+                width: itemW,
+                height: itemH,
+                flexShrink: 0,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: Math.round(itemH * 0.035),
+                borderRadius: 14,
+                background: `linear-gradient(170deg,
+                  ${item.color}28 0%,
+                  ${item.color}0a 35%,
+                  rgba(0,0,0,0.7) 100%)`,
+                border: `1px solid ${item.color}55`,
               }}
             >
-              {item.value}
-            </span>
-          </div>
-        ))}
+              <span
+                style={{
+                  color: item.color,
+                  fontWeight: 900,
+                  fontSize: getValFontSize(item.value),
+                  fontFamily: 'var(--font-display, sans-serif)',
+                  lineHeight: 1,
+                  letterSpacing: '-0.02em',
+                  textShadow: isHigh
+                    ? `0 0 24px ${item.color}cc, 0 0 60px ${item.color}55`
+                    : `0 0 12px ${item.color}66`,
+                }}
+              >
+                {item.value}
+              </span>
+              <span
+                style={{
+                  color: item.color,
+                  fontWeight: 600,
+                  fontSize: lblFont,
+                  fontFamily: 'var(--font-sans, sans-serif)',
+                  letterSpacing: '0.18em',
+                  textTransform: 'uppercase',
+                  opacity: 0.65,
+                }}
+              >
+                {label}
+              </span>
+            </div>
+          )
+        })}
       </div>
 
-      {/* Left vignette */}
+      {/* Always-visible landing-zone selector + near-miss glow */}
       <div
+        ref={selectorRef}
         style={{
-          position: 'absolute', left: 0, top: 0, bottom: 0,
-          width: 110, zIndex: 10, pointerEvents: 'none',
-          background: 'linear-gradient(to right, rgba(0,0,0,0.88) 0%, transparent 100%)',
+          position: 'absolute',
+          left: '50%',
+          top: arrowSz + 2,
+          width: itemW,
+          height: itemH,
+          transform: 'translateX(-50%)',
+          border: '2px solid rgba(255,255,255,0.2)',
+          borderRadius: 14,
+          zIndex: 20,
+          pointerEvents: 'none',
+          opacity: 0,   // hidden until spin starts (RAF sets it to 1 in slow phase)
+          transition: 'border-color 0.07s, box-shadow 0.07s',
         }}
       />
 
-      {/* Right vignette */}
-      <div
-        style={{
-          position: 'absolute', right: 0, top: 0, bottom: 0,
-          width: 110, zIndex: 10, pointerEvents: 'none',
-          background: 'linear-gradient(to left, rgba(0,0,0,0.88) 0%, transparent 100%)',
-        }}
-      />
-
-      {/* Winner highlight border — fades in when the strip locks */}
+      {/* Winner highlight — fades in on lock */}
       <AnimatePresence>
         {locked && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            transition={{ duration: 0.3 }}
+            transition={{ duration: 0.35 }}
             style={{
               position: 'absolute',
               left: '50%',
-              top: 12,
-              width: ITEM_W,
-              height: ITEM_H,
+              top: arrowSz + 2,
+              width: itemW,
+              height: itemH,
               transform: 'translateX(-50%)',
-              border: `2px solid ${landingTier.color}`,
-              borderRadius: 10,
-              boxShadow: `0 0 28px ${landingTier.color}88, inset 0 0 16px ${landingTier.color}22`,
-              zIndex: 15,
+              border: `3px solid ${landingTier.color}`,
+              borderRadius: 14,
+              boxShadow:
+                `0 0 0 1px ${landingTier.color}44, ` +
+                `0 0 50px ${landingTier.color}aa, ` +
+                `0 0 120px ${landingTier.color}44, ` +
+                `inset 0 0 40px ${landingTier.color}22`,
+              zIndex: 22,
               pointerEvents: 'none',
             }}
           />
         )}
       </AnimatePresence>
+
+      {/* Left vignette */}
+      <div style={{
+        position: 'absolute', left: 0, top: 0, bottom: 0,
+        width: vigW, zIndex: 25, pointerEvents: 'none',
+        background: 'linear-gradient(to right, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.6) 50%, transparent 100%)',
+      }} />
+
+      {/* Right vignette */}
+      <div style={{
+        position: 'absolute', right: 0, top: 0, bottom: 0,
+        width: vigW, zIndex: 25, pointerEvents: 'none',
+        background: 'linear-gradient(to left, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.6) 50%, transparent 100%)',
+      }} />
     </div>
   )
 }
@@ -265,9 +366,9 @@ function CrateReel({ landingTierId, totalDuration, onLocked }) {
 // ── Main component ─────────────────────────────────────────────────────────
 
 export default function SlotMachine() {
-  const slotMachine       = useTaskStore(s => s.ui.slotMachine)
+  const slotMachine        = useTaskStore(s => s.ui.slotMachine)
   const dismissSlotMachine = useTaskStore(s => s.dismissSlotMachine)
-  const soundEnabled      = useTaskStore(s => s.settings.soundEnabled)
+  const soundEnabled       = useTaskStore(s => s.settings.soundEnabled)
 
   if (!slotMachine) return null
 
@@ -291,6 +392,8 @@ function SlotMachineInner({ slotMachine, tier, soundEnabled, dismissSlotMachine 
 
   const handleLocked = useCallback(() => {
     if (soundEnabled) playSlotLock()
+    // Confetti fires the instant the reel stops — maximum payoff impact
+    fireTier(tier.id, slotMachine.isFreeXP)
     setTimeout(() => {
       setPhase('result')
       if (soundEnabled) {
@@ -298,26 +401,24 @@ function SlotMachineInner({ slotMachine, tier, soundEnabled, dismissSlotMachine 
         if (fn) fn()
       }
     }, 300)
-  }, [soundEnabled, tier.id])
+  }, [soundEnabled, tier.id, slotMachine.isFreeXP])
 
-  // Entrance sound
   useEffect(() => {
     if (soundEnabled) playSlotEntrance()
   }, [])
 
-  // Auto-dismiss after hold
   useEffect(() => {
     if (phase !== 'result') return
-    const timer = setTimeout(dismissSlotMachine, holdDuration)
-    return () => clearTimeout(timer)
+    const t = setTimeout(dismissSlotMachine, holdDuration)
+    return () => clearTimeout(t)
   }, [phase])
 
   const flashConfig = {
     common:    { opacity: 0 },
     rare:      { color: tier.color, opacity: 0.10 },
     epic:      { color: tier.color, opacity: 0.16 },
-    legendary: { color: tier.color, opacity: 0.22 },
-    mythic:    { rainbow: true,     opacity: 0.28 },
+    legendary: { color: tier.color, opacity: 0.24 },
+    mythic:    { rainbow: true,     opacity: 0.30 },
   }[tier.id]
 
   return (
@@ -328,69 +429,89 @@ function SlotMachineInner({ slotMachine, tier, soundEnabled, dismissSlotMachine 
       exit={{ opacity: 0 }}
       transition={{ duration: 0.9, ease: 'easeInOut' }}
     >
-      {/* Layer 1: dark backdrop */}
+      {/* Layer 1: OLED black backdrop */}
       <motion.div
-        className="absolute inset-0 bg-black/88"
+        className="absolute inset-0"
+        style={{ background: '#050508' }}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        transition={{ duration: 0.6, ease: 'easeOut' }}
-        style={{ willChange: 'opacity' }}
+        transition={{ duration: 0.5, ease: 'easeOut' }}
       />
 
-      {/* Layer 2: frosted glass */}
+      {/* Layer 2: frosted glass texture */}
       <motion.div
         className="absolute inset-0"
         style={{
-          background: 'radial-gradient(ellipse at 40% 20%, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.028) 50%, rgba(0,0,0,0.154) 100%)',
-          backdropFilter: 'blur(28px) saturate(1.6)',
-          WebkitBackdropFilter: 'blur(28px) saturate(1.6)',
-          willChange: 'opacity',
+          background: 'radial-gradient(ellipse at 50% 50%, rgba(255,255,255,0.04) 0%, rgba(0,0,0,0.2) 100%)',
+          backdropFilter: 'blur(32px) saturate(1.4)',
+          WebkitBackdropFilter: 'blur(32px) saturate(1.4)',
         }}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.9, ease: 'easeOut' }}
       />
 
-      {/* Layer 3: screen flash on result */}
+      {/* Layer 3: tier ambient glow behind the reel */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background: `radial-gradient(ellipse 70% 40% at 50% 50%, ${tier.color}12 0%, transparent 70%)`,
+          zIndex: 1,
+        }}
+      />
+
+      {/* Layer 4: screen flash on result */}
       <AnimatePresence>
         {phase === 'result' && flashConfig.opacity > 0 && (
           <motion.div
             key="flash"
             className="absolute inset-0 pointer-events-none"
             style={{
-              zIndex: 1,
+              zIndex: 2,
               background: flashConfig.rainbow
                 ? 'conic-gradient(from 0deg, #FF0000, #FF7F00, #FFFF00, #00FF00, #0000FF, #8B00FF, #FF0000)'
                 : tier.color,
               mixBlendMode: 'screen',
             }}
             initial={{ opacity: 0 }}
-            animate={{ opacity: [0, flashConfig.opacity, flashConfig.opacity * 0.3] }}
-            transition={{ duration: 1.0, times: [0, 0.15, 1] }}
+            animate={{ opacity: [0, flashConfig.opacity, flashConfig.opacity * 0.25] }}
+            transition={{ duration: 1.2, times: [0, 0.12, 1] }}
           />
         )}
       </AnimatePresence>
 
-      {/* Layer 4: content */}
+      {/* Layer 5: content */}
       <div
-        className="absolute inset-0 flex flex-col items-center justify-center gap-8"
-        style={{ zIndex: 2 }}
+        className="absolute inset-0 flex flex-col items-center justify-center"
+        style={{ zIndex: 3, gap: '20px' }}
       >
         {/* Task name */}
         <motion.div
-          initial={{ opacity: 0, y: -8 }}
-          animate={{ opacity: 0.55, y: 0 }}
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 0.5, y: 0 }}
           transition={{ duration: 0.6, delay: 0.7, ease: 'easeOut' }}
-          className="text-xs text-white font-sans truncate max-w-[280px] text-center tracking-wide"
+          style={{
+            fontSize: 13,
+            color: 'rgba(255,255,255,0.5)',
+            fontFamily: 'var(--font-sans, sans-serif)',
+            letterSpacing: '0.06em',
+            textTransform: 'uppercase',
+            maxWidth: 320,
+            textAlign: 'center',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
         >
           {slotMachine.taskText}
         </motion.div>
 
-        {/* Horizontal crate reel */}
+        {/* The reel — enters scaled from 0.96 */}
         <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
+          initial={{ opacity: 0, scale: 0.96 }}
           animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.55, delay: 0.85, ease: [0.22, 1, 0.36, 1] }}
+          transition={{ duration: 0.6, delay: 0.85, ease: [0.22, 1, 0.36, 1] }}
+          style={{ width: '100%' }}
         >
           <CrateReel
             landingTierId={tier.id}
@@ -399,33 +520,43 @@ function SlotMachineInner({ slotMachine, tier, soundEnabled, dismissSlotMachine 
           />
         </motion.div>
 
-        {/* Result area */}
-        <div style={{ minHeight: 80 }} className="flex items-center justify-center">
+        {/* Result / spinner */}
+        <div style={{ minHeight: 88, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <AnimatePresence>
             {phase === 'result' && (
               <motion.div
                 key="result"
-                initial={{ opacity: 0, scale: 0.5, y: 10 }}
+                initial={{ opacity: 0, scale: 0.45, y: 14 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
-                transition={{ type: 'spring', stiffness: 480, damping: 20 }}
-                className="text-center"
+                transition={{ type: 'spring', stiffness: 500, damping: 22 }}
+                style={{ textAlign: 'center' }}
               >
                 <div
-                  className="font-display font-bold tracking-tight"
                   style={{
-                    fontSize: 52,
+                    fontSize: 64,
+                    fontWeight: 900,
+                    fontFamily: 'var(--font-display, sans-serif)',
                     color: tier.color,
-                    textShadow: `0 0 30px ${tier.color}99, 0 0 60px ${tier.color}44`,
                     lineHeight: 1,
+                    letterSpacing: '-0.02em',
+                    textShadow: `0 0 40px ${tier.color}99, 0 0 80px ${tier.color}44`,
                   }}
                 >
                   +{slotMachine.xpAmount.toLocaleString()} XP
                 </div>
                 <div
-                  className="font-sans font-semibold mt-2 tracking-widest uppercase"
-                  style={{ fontSize: 13, color: tier.color, opacity: 0.75 }}
+                  style={{
+                    fontSize: 14,
+                    fontFamily: 'var(--font-sans, sans-serif)',
+                    fontWeight: 600,
+                    marginTop: 10,
+                    letterSpacing: '0.2em',
+                    textTransform: 'uppercase',
+                    color: tier.color,
+                    opacity: 0.7,
+                  }}
                 >
-                  {tier.label} · {tier.value}x
+                  {tier.label} · {tier.value}x multiplier
                 </div>
               </motion.div>
             )}
@@ -433,16 +564,20 @@ function SlotMachineInner({ slotMachine, tier, soundEnabled, dismissSlotMachine 
             {phase === 'spinning' && (
               <motion.div
                 key="dots"
-                className="flex gap-2"
+                style={{ display: 'flex', gap: 8 }}
                 exit={{ opacity: 0 }}
               >
                 {[0, 1, 2].map(i => (
                   <motion.div
                     key={i}
-                    className="w-1.5 h-1.5 rounded-full"
-                    style={{ backgroundColor: 'rgba(255,255,255,0.25)' }}
-                    animate={{ opacity: [0.25, 0.8, 0.25] }}
-                    transition={{ duration: 0.7, repeat: Infinity, delay: i * 0.15 }}
+                    style={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: '50%',
+                      backgroundColor: 'rgba(255,255,255,0.2)',
+                    }}
+                    animate={{ opacity: [0.2, 0.7, 0.2] }}
+                    transition={{ duration: 0.8, repeat: Infinity, delay: i * 0.18 }}
                   />
                 ))}
               </motion.div>

@@ -307,7 +307,7 @@ export function fireRankUpConfetti(tierColor, isMajor = false) {
 }
 
 // ── Tier dispatch ──────────────────────────────────────────────────────────
-function fireTier(tierId, isFreeXP) {
+export function fireTier(tierId, isFreeXP) {
   switch (tierId) {
     case 'mythic':    return fireMythic(isFreeXP)
     case 'legendary': return fireLegendary(isFreeXP)
