@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import useTaskStore from '@/store/tasks'
 import { MULTIPLIER_TIERS } from '@/utils/progression'
@@ -12,30 +12,35 @@ import {
   playSlotResultMythic,
 } from '@/hooks/useSound'
 
-// ── Tier config ───────────────────────────────────────────────────────────
-//
-// Research basis (Clark et al. 2009, Murch et al. 2020, Mentzoni et al. 2010):
-// – The anticipatory spin window that maximises arousal is 2.8–6s flat across
-//   all tiers. Longer spins don't add tension — they become tedious.
-// – Tier differentiation comes from HOLD time (how long the result stays up),
-//   not spin length. The result is what the player remembers (peak-end rule).
-// – Near-miss frames should be 300–600ms each to register consciously.
-// – SCR (skin conductance) peaks 3–6s after reveal — hold must cover this.
+// ── Layout constants ───────────────────────────────────────────────────────
+const ITEM_W    = 82          // card width px
+const ITEM_H    = 82          // card height px
+const ITEM_GAP  = 6           // gap between cards px
+const ITEM_STEP = ITEM_W + ITEM_GAP  // 88px per slot
+const VISIBLE   = 7           // visible items (odd for symmetry)
+const CONTAINER_W = ITEM_STEP * VISIBLE - ITEM_GAP  // 610px
 
+// The winner lives at this fixed index in the strip
+const WIN_INDEX = 38
+
+// Delay before spin starts (matches the container animate-in timing)
+const ENTRANCE_DELAY = 900  // ms
+
+// ── Tier config ────────────────────────────────────────────────────────────
 const TIER_DURATION = {
-  common:    3000,  // 3.0s — within the validated 2.8–6s arousal window
-  rare:      3200,  // 3.2s — barely longer; suspense is equal, payoff scales
-  epic:      3400,  // 3.4s
-  legendary: 3800,  // 3.8s — slight extra crawl before the lock
-  mythic:    4200,  // 4.2s — maximum spin without hitting tedium threshold
+  common:    3000,
+  rare:      3200,
+  epic:      3400,
+  legendary: 3800,
+  mythic:    4200,
 }
 
 const TIER_HOLD = {
-  common:    1500,  // 1.5s — enough to read the result
-  rare:      2200,  // 2.2s
-  epic:      3200,  // 3.2s — SCR onset window begins here
-  legendary: 5000,  // 5.0s — full SCR peak (matches Overwatch study hold)
-  mythic:    7000,  // 7.0s — maximum arousal window; feels like a jackpot
+  common:    1500,
+  rare:      2200,
+  epic:      3200,
+  legendary: 5000,
+  mythic:    7000,
 }
 
 const TIER_RESULT_SOUNDS = {
@@ -46,31 +51,23 @@ const TIER_RESULT_SOUNDS = {
   mythic:    playSlotResultMythic,
 }
 
-// ── Psychologically optimized spin sequence ───────────────────────────────
-// Slot machines show high values frequently during the spin to maximize
-// excitement, with the actual result at the end. The sequence repeats
-// several times during the spin with a near-miss cluster at the end.
-//
-// Pattern: common values anchor the spin, rare/epic appear frequently,
-// legendary appears 2x before the final lock (near-miss feel),
-// mythic flashes once near the end for max tension.
-
+// ── Item pool shown during the spin ───────────────────────────────────────
+// High-value items appear frequently so the near-miss feel is strong
 const SPIN_SEQUENCE = [
-  { id: 'common',    value: '1x',    color: '#888888' },
-  { id: 'rare',      value: '1.5x',  color: '#4A9EFF' },
-  { id: 'common',    value: '1x',    color: '#888888' },
-  { id: 'epic',      value: '2x',    color: '#9B59B6' },
-  { id: 'rare',      value: '1.5x',  color: '#4A9EFF' },
-  { id: 'legendary', value: '3.5x',  color: '#FFD700' },
-  { id: 'common',    value: '1x',    color: '#888888' },
-  { id: 'rare',      value: '1.5x',  color: '#4A9EFF' },
-  { id: 'epic',      value: '2x',    color: '#9B59B6' },
-  { id: 'legendary', value: '3.5x',  color: '#FFD700' },
-  { id: 'mythic',    value: '10x',   color: '#FF3030' },
-  { id: 'common',    value: '1x',    color: '#888888' },
+  { id: 'common',    value: '1x',   color: '#888888' },
+  { id: 'rare',      value: '1.5x', color: '#4A9EFF' },
+  { id: 'common',    value: '1x',   color: '#888888' },
+  { id: 'epic',      value: '2x',   color: '#9B59B6' },
+  { id: 'rare',      value: '1.5x', color: '#4A9EFF' },
+  { id: 'legendary', value: '3.5x', color: '#FFD700' },
+  { id: 'common',    value: '1x',   color: '#888888' },
+  { id: 'rare',      value: '1.5x', color: '#4A9EFF' },
+  { id: 'epic',      value: '2x',   color: '#9B59B6' },
+  { id: 'legendary', value: '3.5x', color: '#FFD700' },
+  { id: 'mythic',    value: '10x',  color: '#FF3030' },
+  { id: 'common',    value: '1x',   color: '#888888' },
 ]
 
-// Convert a tier object to the display value string
 function tierToDisplayItem(t) {
   const valueMap = { 1: '1x', 1.5: '1.5x', 2: '2x', 3.5: '3.5x', 10: '10x' }
   return { id: t.id, value: valueMap[t.value] ?? `${t.value}x`, color: t.color }
@@ -81,167 +78,196 @@ function getTierByOffset(targetId, offset) {
   return MULTIPLIER_TIERS[Math.max(0, Math.min(idx + offset, MULTIPLIER_TIERS.length - 1))]
 }
 
-// ── Spin story ────────────────────────────────────────────────────────────
-// Decide once per spin what each of the 3 reels actually lands on.
-// Reel 2 always shows the true result. Reels 0 and 1 vary:
-//
-//   40% full match  — all 3 match the real result (clean win feel)
-//   35% near-miss   — reels 0+1 land one tier above (tantalising)
-//   25% scatter     — reels 0+1 each get a random ±1 offset (clear miss)
-//
-// This mirrors how real slot machines vary their "story" to avoid the
-// animation feeling mechanical.
-function rollSpinStory(targetId) {
-  const r = Math.random()
-  const target = MULTIPLIER_TIERS.find(t => t.id === targetId)
+// Generate the horizontal strip:
+// – Random items fill most of the pre-winner space
+// – Two near-miss items (one tier above winner) sit just before the winner
+//   so the strip naturally slows past them before settling
+// – A few filler items follow the winner so the strip doesn't dead-end
+function generateStrip(winningTierId) {
+  const winTier  = MULTIPLIER_TIERS.find(t => t.id === winningTierId)
+  const winner   = tierToDisplayItem(winTier)
+  const nearMiss = tierToDisplayItem(getTierByOffset(winningTierId, +1))
+  const startOff = Math.floor(Math.random() * SPIN_SEQUENCE.length)
 
-  if (r < 0.40) {
-    // Full match — all three land on the real result
-    return [target, target, target]
-  } else if (r < 0.75) {
-    // Near-miss — reels 0+1 one tier above, reel 2 is correct
-    const above = getTierByOffset(targetId, +1)
-    return [above, above, target]
-  } else {
-    // Scatter — reels 0 and 1 get independent random offsets
-    // Use +1 / -1 so they clearly differ from each other and from reel 2
-    const reel0 = getTierByOffset(targetId, +1)
-    const reel1 = getTierByOffset(targetId, -1)
-    return [reel0, reel1, target]
+  const items = []
+  for (let i = 0; i < WIN_INDEX - 2; i++) {
+    items.push(SPIN_SEQUENCE[(startOff + i) % SPIN_SEQUENCE.length])
   }
+  items.push(nearMiss)  // WIN_INDEX - 2 │ near-miss frame 1
+  items.push(nearMiss)  // WIN_INDEX - 1 │ near-miss frame 2
+  items.push(winner)    // WIN_INDEX     │ the actual winner
+  for (let i = 0; i < 4; i++) {
+    items.push(SPIN_SEQUENCE[(startOff + i) % SPIN_SEQUENCE.length])
+  }
+  return items
 }
 
-// ── Single reel ───────────────────────────────────────────────────────────
-//
-// landingTierId: the tier this specific reel lands on (may differ from the
-//                true result on reels 0 and 1 — see rollSpinStory above)
-
-function Reel({ landingTierId, lockAt, totalDuration, reelIndex }) {
-  // Each reel starts at a different point in the sequence so they spin
-  // visually out of phase — makes it look like independent drums
-  const initOffset = (reelIndex * 4) % SPIN_SEQUENCE.length
-  const [displayItem, setDisplayItem] = useState(SPIN_SEQUENCE[initOffset])
+// ── Single horizontal crate reel ──────────────────────────────────────────
+function CrateReel({ landingTierId, totalDuration, onLocked }) {
+  const stripRef    = useRef(null)
   const [locked, setLocked] = useState(false)
-  const startRef = useRef(null)
-  const frameRef = useRef(null)
-  const lockedRef = useRef(false)
-
+  const strip       = useMemo(() => generateStrip(landingTierId), [landingTierId])
   const landingTier = MULTIPLIER_TIERS.find(t => t.id === landingTierId)
 
-  // Near-miss tail: always flashes one tier above the landing value
-  // so every reel has a micro-tease before settling
-  const nearMissAbove = getTierByOffset(landingTierId, +1)
+  // translateX that puts the WIN_INDEX card exactly in the center
+  const finalX = CONTAINER_W / 2 - (WIN_INDEX * ITEM_STEP + ITEM_W / 2)
 
   useEffect(() => {
-    startRef.current = performance.now()
-    let seqIndex = initOffset
+    const el = stripRef.current
+    if (!el) return
 
-    // Speed curve: fast in the middle, slows down before locking
-    function getFrameDelay(elapsed) {
-      const progress = elapsed / totalDuration
-      if (progress < 0.25) return 60         // fast spin
-      if (progress < 0.50) return 80         // medium-fast
-      if (progress < 0.70) return 120        // slowing
-      if (progress < 0.85) return 180        // slow crawl
-      return 260                             // nearly stopped
-    }
+    let startTimer, lockTimer
 
-    function tick() {
-      const elapsed = performance.now() - startRef.current
+    startTimer = setTimeout(() => {
+      // Set explicit start state → force reflow → add transition → set end state
+      el.style.transform = 'translateX(0)'
+      void el.getBoundingClientRect()
+      el.style.transition = `transform ${totalDuration}ms cubic-bezier(0.12, 0.82, 0.2, 1)`
+      el.style.transform  = `translateX(${finalX}px)`
+    }, ENTRANCE_DELAY)
 
-      if (elapsed >= lockAt && !lockedRef.current) {
-        lockedRef.current = true
-
-        // Flash near-miss frame (one tier above landing) — 400ms each,
-        // within the 300–600ms conscious-registration window (Clark et al. 2009)
-        setDisplayItem(tierToDisplayItem(nearMissAbove))
-        setTimeout(() => {
-          // Step down to the tier that this reel actually lands on
-          setDisplayItem(tierToDisplayItem(landingTier))
-          setTimeout(() => {
-            setLocked(true)
-          }, 400)
-        }, 400)
-        return
-      }
-
-      if (lockedRef.current) return
-
-      seqIndex = (seqIndex + 1) % SPIN_SEQUENCE.length
-      setDisplayItem(SPIN_SEQUENCE[seqIndex])
-
-      const delay = getFrameDelay(elapsed)
-      frameRef.current = setTimeout(tick, delay)
-    }
-
-    frameRef.current = setTimeout(tick, 80)
+    lockTimer = setTimeout(() => {
+      setLocked(true)
+      onLocked?.()
+    }, ENTRANCE_DELAY + totalDuration)
 
     return () => {
-      if (frameRef.current) clearTimeout(frameRef.current)
+      clearTimeout(startTimer)
+      clearTimeout(lockTimer)
     }
   }, [])
 
-  const isHighValue = displayItem.id === 'legendary' || displayItem.id === 'mythic'
-
   return (
     <div
-      className="flex items-center justify-center rounded-xl overflow-hidden relative"
       style={{
-        width: 96,
-        height: 96,
-        background: locked
-          ? `radial-gradient(ellipse at center, ${landingTier.color}22 0%, rgba(0,0,0,0.6) 100%)`
-          : 'rgba(255,255,255,0.05)',
-        border: locked
-          ? `1px solid ${landingTier.color}66`
-          : '1px solid rgba(255,255,255,0.1)',
-        transition: 'background 0.3s, border-color 0.3s',
-        boxShadow: locked ? `0 0 20px ${landingTier.color}33` : 'none',
+        width: CONTAINER_W,
+        height: ITEM_H + 24,  // 12px above + 12px below for indicator arrows
+        overflow: 'hidden',
+        position: 'relative',
+        borderRadius: 14,
+        background: 'rgba(0,0,0,0.35)',
+        border: '1px solid rgba(255,255,255,0.08)',
       }}
     >
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={displayItem.id + displayItem.value + (locked ? '-locked' : '')}
-          initial={{ y: locked ? 0 : -24, opacity: 0, scale: locked ? 0.8 : 0.9 }}
-          animate={{ y: 0, opacity: 1, scale: locked ? 1.05 : 1 }}
-          exit={{ y: locked ? 0 : 24, opacity: 0 }}
-          transition={locked
-            ? { type: 'spring', stiffness: 600, damping: 18 }
-            : { duration: 0.06 }
-          }
-          className="font-display font-bold text-center select-none"
-          style={{
-            fontSize: displayItem.value.length > 3 ? 28 : 32,
-            color: displayItem.color,
-            textShadow: isHighValue || locked
-              ? `0 0 20px ${displayItem.color}99, 0 0 40px ${displayItem.color}44`
-              : 'none',
-          }}
-        >
-          {displayItem.value}
-        </motion.div>
-      </AnimatePresence>
+      {/* Top indicator arrow — points down toward the center line */}
+      <div
+        style={{
+          position: 'absolute', left: '50%', top: 0, zIndex: 20,
+          transform: 'translateX(-50%)',
+          width: 0, height: 0,
+          borderLeft: '7px solid transparent',
+          borderRight: '7px solid transparent',
+          borderTop: '11px solid rgba(255,255,255,0.85)',
+        }}
+      />
 
-      {/* Lock flash */}
-      {locked && (
-        <motion.div
-          className="absolute inset-0 rounded-xl pointer-events-none"
-          initial={{ opacity: 0.6 }}
-          animate={{ opacity: 0 }}
-          transition={{ duration: 0.5 }}
-          style={{ background: landingTier.color, mixBlendMode: 'screen' }}
-        />
-      )}
+      {/* Bottom indicator arrow — points up toward the center line */}
+      <div
+        style={{
+          position: 'absolute', left: '50%', bottom: 0, zIndex: 20,
+          transform: 'translateX(-50%)',
+          width: 0, height: 0,
+          borderLeft: '7px solid transparent',
+          borderRight: '7px solid transparent',
+          borderBottom: '11px solid rgba(255,255,255,0.85)',
+        }}
+      />
+
+      {/* Scrolling item strip */}
+      <div
+        ref={stripRef}
+        style={{
+          display: 'flex',
+          gap: ITEM_GAP,
+          position: 'absolute',
+          top: 12,
+          left: 0,
+          willChange: 'transform',
+        }}
+      >
+        {strip.map((item, i) => (
+          <div
+            key={i}
+            style={{
+              width: ITEM_W,
+              height: ITEM_H,
+              flexShrink: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderRadius: 10,
+              background: `linear-gradient(135deg, ${item.color}18 0%, rgba(0,0,0,0.5) 100%)`,
+              border: `1px solid ${item.color}40`,
+            }}
+          >
+            <span
+              style={{
+                color: item.color,
+                fontWeight: 700,
+                fontSize: item.value.length > 3 ? 20 : 24,
+                fontFamily: 'var(--font-display, sans-serif)',
+                textShadow: (item.id === 'legendary' || item.id === 'mythic')
+                  ? `0 0 12px ${item.color}88`
+                  : 'none',
+              }}
+            >
+              {item.value}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {/* Left vignette */}
+      <div
+        style={{
+          position: 'absolute', left: 0, top: 0, bottom: 0,
+          width: 110, zIndex: 10, pointerEvents: 'none',
+          background: 'linear-gradient(to right, rgba(0,0,0,0.88) 0%, transparent 100%)',
+        }}
+      />
+
+      {/* Right vignette */}
+      <div
+        style={{
+          position: 'absolute', right: 0, top: 0, bottom: 0,
+          width: 110, zIndex: 10, pointerEvents: 'none',
+          background: 'linear-gradient(to left, rgba(0,0,0,0.88) 0%, transparent 100%)',
+        }}
+      />
+
+      {/* Winner highlight border — fades in when the strip locks */}
+      <AnimatePresence>
+        {locked && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.3 }}
+            style={{
+              position: 'absolute',
+              left: '50%',
+              top: 12,
+              width: ITEM_W,
+              height: ITEM_H,
+              transform: 'translateX(-50%)',
+              border: `2px solid ${landingTier.color}`,
+              borderRadius: 10,
+              boxShadow: `0 0 28px ${landingTier.color}88, inset 0 0 16px ${landingTier.color}22`,
+              zIndex: 15,
+              pointerEvents: 'none',
+            }}
+          />
+        )}
+      </AnimatePresence>
     </div>
   )
 }
 
-// ── Main component ────────────────────────────────────────────────────────
+// ── Main component ─────────────────────────────────────────────────────────
 
 export default function SlotMachine() {
-  const slotMachine = useTaskStore(s => s.ui.slotMachine)
+  const slotMachine       = useTaskStore(s => s.ui.slotMachine)
   const dismissSlotMachine = useTaskStore(s => s.dismissSlotMachine)
-  const soundEnabled = useTaskStore(s => s.settings.soundEnabled)
+  const soundEnabled      = useTaskStore(s => s.settings.soundEnabled)
 
   if (!slotMachine) return null
 
@@ -260,53 +286,21 @@ export default function SlotMachine() {
 
 function SlotMachineInner({ slotMachine, tier, soundEnabled, dismissSlotMachine }) {
   const totalDuration = TIER_DURATION[tier.id]
-  const holdDuration = TIER_HOLD[tier.id]
+  const holdDuration  = TIER_HOLD[tier.id]
+  const [phase, setPhase] = useState('spinning')  // 'spinning' | 'result'
 
-  // Roll the spin story once on mount — determines what each reel lands on.
-  // useRef so it's stable across re-renders without being in state.
-  const spinStory = useRef(rollSpinStory(tier.id))
-  const reelLandingTierIds = spinStory.current.map(t => t.id)
-
-  // Reel lock times — staggered, each locks sequentially
-  // Last reel locks at 85% of total duration
-  const lockAt = [
-    totalDuration * 0.40,
-    totalDuration * 0.62,
-    totalDuration * 0.82,
-  ]
-
-  const [reelsLocked, setReelsLocked] = useState([false, false, false])
-  const [phase, setPhase] = useState('spinning') // spinning | result
-
-  // Track reel lock events for sound + phase transition
-  useEffect(() => {
-    const timers = lockAt.map((t, i) =>
-      setTimeout(() => {
-        if (soundEnabled) playSlotLock()
-        setReelsLocked(prev => {
-          const next = [...prev]
-          next[i] = true
-          return next
-        })
-      }, t + 800) // +800ms to fire after both near-miss frames (400ms × 2)
-    )
-
-    // Transition to result phase after last reel locks + near-miss delay
-    const resultTimer = setTimeout(() => {
+  const handleLocked = useCallback(() => {
+    if (soundEnabled) playSlotLock()
+    setTimeout(() => {
       setPhase('result')
       if (soundEnabled) {
         const fn = TIER_RESULT_SOUNDS[tier.id]
         if (fn) fn()
       }
-    }, lockAt[2] + 900)
+    }, 300)
+  }, [soundEnabled, tier.id])
 
-    return () => {
-      timers.forEach(clearTimeout)
-      clearTimeout(resultTimer)
-    }
-  }, [])
-
-  // Entrance sound — fires once on mount
+  // Entrance sound
   useEffect(() => {
     if (soundEnabled) playSlotEntrance()
   }, [])
@@ -334,8 +328,7 @@ function SlotMachineInner({ slotMachine, tier, soundEnabled, dismissSlotMachine 
       exit={{ opacity: 0 }}
       transition={{ duration: 0.9, ease: 'easeInOut' }}
     >
-
-      {/* Layer 1: dark backdrop — fades in fast, no blur so GPU stays happy */}
+      {/* Layer 1: dark backdrop */}
       <motion.div
         className="absolute inset-0 bg-black/88"
         initial={{ opacity: 0 }}
@@ -344,7 +337,7 @@ function SlotMachineInner({ slotMachine, tier, soundEnabled, dismissSlotMachine 
         style={{ willChange: 'opacity' }}
       />
 
-      {/* Layer 2: frosted glass — separate element so blur doesn't repaint during opacity animation */}
+      {/* Layer 2: frosted glass */}
       <motion.div
         className="absolute inset-0"
         style={{
@@ -378,39 +371,35 @@ function SlotMachineInner({ slotMachine, tier, soundEnabled, dismissSlotMachine 
         )}
       </AnimatePresence>
 
-      {/* Layer 4: content — staggered in after glass settles */}
-      <div className="absolute inset-0 flex flex-col items-center justify-center gap-6" style={{ zIndex: 2 }}>
-
+      {/* Layer 4: content */}
+      <div
+        className="absolute inset-0 flex flex-col items-center justify-center gap-8"
+        style={{ zIndex: 2 }}
+      >
         {/* Task name */}
         <motion.div
           initial={{ opacity: 0, y: -8 }}
           animate={{ opacity: 0.55, y: 0 }}
           transition={{ duration: 0.6, delay: 0.7, ease: 'easeOut' }}
-          className="text-xs text-white font-sans truncate max-w-[240px] text-center tracking-wide"
+          className="text-xs text-white font-sans truncate max-w-[280px] text-center tracking-wide"
         >
           {slotMachine.taskText}
         </motion.div>
 
-        {/* Reels */}
+        {/* Horizontal crate reel */}
         <motion.div
-          className="flex gap-3"
-          initial={{ opacity: 0, scale: 0.92 }}
+          initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.55, delay: 0.85, ease: [0.22, 1, 0.36, 1] }}
-          style={{ willChange: 'opacity, transform' }}
         >
-          {[0, 1, 2].map(i => (
-            <Reel
-              key={i}
-              reelIndex={i}
-              landingTierId={reelLandingTierIds[i]}
-              lockAt={lockAt[i]}
-              totalDuration={totalDuration}
-            />
-          ))}
+          <CrateReel
+            landingTierId={tier.id}
+            totalDuration={totalDuration}
+            onLocked={handleLocked}
+          />
         </motion.div>
 
-        {/* Result */}
+        {/* Result area */}
         <div style={{ minHeight: 80 }} className="flex items-center justify-center">
           <AnimatePresence>
             {phase === 'result' && (
@@ -441,7 +430,6 @@ function SlotMachineInner({ slotMachine, tier, soundEnabled, dismissSlotMachine 
               </motion.div>
             )}
 
-            {/* Spinning dots placeholder */}
             {phase === 'spinning' && (
               <motion.div
                 key="dots"
@@ -461,7 +449,6 @@ function SlotMachineInner({ slotMachine, tier, soundEnabled, dismissSlotMachine 
             )}
           </AnimatePresence>
         </div>
-
       </div>
     </motion.div>
   )
