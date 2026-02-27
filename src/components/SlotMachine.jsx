@@ -14,20 +14,25 @@ import {
 } from '@/hooks/useSound'
 
 // ── Strip constants (dimension-independent) ────────────────────────────────
-const WIN_INDEX  = 45              // winner sits at this index in the strip
-const SLOW_START = WIN_INDEX - 10  // slow-phase starts here (10 items of crawl)
-const ENTRANCE_DELAY = 900         // ms — matches container fade-in
+const WIN_INDEX      = 45   // winner sits at this index in the strip
+const ENTRANCE_DELAY = 900  // ms — matches container fade-in
 
-// ── Two-phase RAF easing ───────────────────────────────────────────────────
-// Phase 1 (0–FAST_T):  linear blur, covers FAST_D of the total distance
-// Phase 2 (FAST_T–1):  quintic ease-out hard-brakes through the last 10 items
-const FAST_T = 0.58
-const FAST_D = 0.80
+// ── Logarithmic ease-out ──────────────────────────────────────────────────
+//
+// f(t) = ln(1 + k·t) / ln(1 + k)
+//
+// A single smooth curve — no phase boundary, no abrupt gear-change.
+// The strip launches at ~7× the average speed and decelerates continuously,
+// letting the last items tick past one-by-one as the curve flattens to near-zero.
+//
+// k = 22  →  start/end speed ratio ≈ 23:1
+//   common  (5 s): ~370 ms per near-miss item  (conscious registration range)
+//   mythic  (13 s): ~960 ms per near-miss item  (agonising crawl)
+//
+const LOG_K = 22
 
 function easeProgress(t) {
-  if (t <= FAST_T) return (t / FAST_T) * FAST_D
-  const s = (t - FAST_T) / (1 - FAST_T)
-  return FAST_D + (1 - Math.pow(1 - s, 5)) * (1 - FAST_D)
+  return Math.log(1 + LOG_K * t) / Math.log(1 + LOG_K)
 }
 
 // ── Timing ─────────────────────────────────────────────────────────────────
@@ -160,7 +165,8 @@ function CrateReel({ landingTierId, totalDuration, onLocked }) {
         el.style.transform = `translateX(${currentX}px)`
 
         // During slow phase: light up the selector when a near-miss fills the center
-        if (t > FAST_T && selectorRef.current) {
+        // Show near-miss glow whenever items are slow enough to read (~45 % onward)
+        if (t > 0.45 && selectorRef.current) {
           const centerIdx  = Math.round((cw / 2 - itemW / 2 - currentX) / step)
           const idx        = Math.max(0, Math.min(centerIdx, strip.length - 1))
           const centerItem = strip[idx]
