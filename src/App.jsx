@@ -12,6 +12,7 @@ import Toast from '@/components/Toast'
 import XPSummary from '@/components/XPSummary'
 import RankUpAnimation from '@/components/RankUpAnimation'
 import SlotMachine from '@/components/SlotMachine'
+import Onboarding from '@/components/Onboarding'
 
 const tabOrder = ['later', 'today', 'done']
 
@@ -26,6 +27,7 @@ export default function App() {
   const rankUpAnimation = useTaskStore(s => s.ui.rankUpAnimation)
   const slotMachine = useTaskStore(s => s.ui.slotMachine)
   const openSettings = useTaskStore(s => s.openSettings)
+  const onboardingCompleted = useTaskStore(s => s.settings.onboardingCompleted)
 
   useEffect(() => {
     initialize()
@@ -56,6 +58,10 @@ export default function App() {
         </div>
       </div>
     )
+  }
+
+  if (!onboardingCompleted) {
+    return <Onboarding />
   }
 
   const currentTabIndex = tabOrder.indexOf(activeTab)

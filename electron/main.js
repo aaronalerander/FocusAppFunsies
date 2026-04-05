@@ -110,6 +110,9 @@ const SETTING_DEFAULTS = {
   // Hidden loot probability seed for the day. Never exposed to the player.
   // Seeded once at daily reset. 'standard' | 'warm' | 'hot'
   daily_modifier_type: 'standard',
+
+  // ── Onboarding ───────────────────────────────────────────────
+  onboardingCompleted: false,
 }
 
 function initSettings() {

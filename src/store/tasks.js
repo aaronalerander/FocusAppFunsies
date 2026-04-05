@@ -739,6 +739,11 @@ const useTaskStore = create((set, get) => ({
     await window.focusAPI.settings.update(changes)
   },
 
+  completeOnboarding: async () => {
+    set(state => ({ settings: { ...state.settings, onboardingCompleted: true } }))
+    await window.focusAPI.settings.update({ onboardingCompleted: true })
+  },
+
   hardReset: async () => {
     await window.focusAPI.hardReset()
     set({
