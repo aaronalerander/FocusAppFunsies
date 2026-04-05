@@ -5,7 +5,7 @@
   "main": "dist-electron/main.js",
   "type": "module",
   "scripts": {
-    "dev": "electron_config_cache=.electron-cache vite",
+    "dev": "./dev.sh",
     "start": "electron_config_cache=.electron-cache ./node_modules/.bin/electron dist-electron/main.js",
     "build": "vite build",
     "dist": "vite build && electron-builder --mac",
