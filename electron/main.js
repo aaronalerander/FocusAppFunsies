@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, nativeTheme, globalShortcut, Notification 
 import { fileURLToPath } from 'url'
 import { join, dirname } from 'path'
 import { createRequire } from 'module'
-import { existsSync, readFileSync } from 'fs'
+import { existsSync, readFileSync, unlinkSync } from 'fs'
 import {
   getRankForXP,
   getRankById,
@@ -29,7 +29,13 @@ const __dirname = dirname(__filename)
 
 // ── Database setup ────────────────────────────────────────────
 
-const DB_PATH = join(app.getPath('userData'), 'focus.db')
+const isDev = !!process.env.VITE_DEV_SERVER_URL
+const DB_PATH = join(app.getPath('userData'), isDev ? 'focus-dev.db' : 'focus.db')
+if (isDev) {
+  for (const f of [DB_PATH, `${DB_PATH}-wal`, `${DB_PATH}-shm`]) {
+    if (existsSync(f)) unlinkSync(f)
+  }
+}
 const db = new Database(DB_PATH)
 
 db.pragma('journal_mode = WAL')
